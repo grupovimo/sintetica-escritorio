@@ -71,6 +71,33 @@ h1 { margin: 0; font-size: 20px; font-weight: 800; text-transform: capitalize; }
 .charla .el.aviso { box-shadow: inset 0 0 0 1px var(--acento); }
 .charla .vos { align-self: flex-end; background: var(--acento); color: #1a0d05; border-bottom-right-radius: 4px; }
 
+.robots {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.robots:empty { display: none; }
+.robots button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  background: var(--tarjeta);
+  color: var(--suave);
+  box-shadow: inset 0 0 0 1px var(--borde);
+}
+.robots button[aria-pressed="true"] { color: var(--texto); box-shadow: inset 0 0 0 1.5px var(--acento); }
+.robots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); }
+.robots i.en-linea { background: #5fd38d; }
+.robots .mimo { padding: 6px 10px; color: var(--acento); }
+.charla .quien { display: block; font-size: 11px; font-weight: 600; color: var(--suave); }
+
 form {
   display: flex;
   gap: 8px;

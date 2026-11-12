@@ -2,8 +2,8 @@
 //! - te mira: los ojos siguen al mouse por toda la pantalla;
 //! - nota si estás: sin teclado ni mouse un rato, "te fuiste" (0x49, como la
 //!   presencia del celu: se aburre y le da sueño); al volver, "llegaste";
-//! - camina sola por el piso (el borde de abajo, arriba del dock o la barra),
-//!   de vez en cuando y sin molestar: no si la estás usando, si el panel está
+//! - camina sola por el piso (el borde de abajo, arriba del dock o la barra), a
+//!   pasitos, o se asoma por un borde, de vez en cuando y sin molestar: no si la estás usando, si el panel está
 //!   abierto o si la dejaste en otro lado;
 //! - los clics pasan de largo por lo transparente: solo la cara (y sus botones,
 //!   con el mouse encima) atrapa el mouse.
@@ -26,6 +26,11 @@ const VELOCIDAD: f64 = 70.0;
 const IMAN: f64 = 80.0;
 // Alrededor de la cara, lo que también cuenta como "encima".
 const MARGEN: f64 = 10.0;
+// Un paso al caminar (píxeles lógicos) y cuánto sube en cada uno.
+const PASO: f64 = 26.0;
+const SALTITO: f64 = 4.0;
+// Al asomarse por un borde, cuánto de la cara queda afuera.
+const AFUERA: f64 = 0.45;
 
 /// Lo que comparte con el evento de ventana movida (main.rs).
 pub struct Movida {
@@ -75,11 +80,19 @@ fn mover(v: &WebviewWindow, m: &Movida, x: f64, y: f64) {
 }
 
 /// Camina de donde está hasta x (en el piso), mirando para donde va.
+/// A pasitos: sube y baja un poco en cada paso, para que se vea caminar y no deslizarse.
 fn caminar(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo, hasta: f64) {
+    caminar_a(v, m, nucleo, hasta, VELOCIDAD);
+}
+
+fn caminar_a(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo, hasta: f64, velocidad: f64) {
     let (Ok(p), Ok(f)) = (v.outer_position(), v.scale_factor()) else { return };
     let (desde, y) = (p.x as f64, p.y as f64);
     let dist = (hasta - desde).abs();
-    let dura = dist / (VELOCIDAD * f);
+    if dist < 1.0 {
+        return;
+    }
+    let dura = dist / (velocidad * f);
     let dir = if hasta > desde { 0.9 } else { -0.9 };
     let t0 = Instant::now();
     let mut mirada = Instant::now() - Duration::from_secs(2);
@@ -87,7 +100,9 @@ fn caminar(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo, hasta: f64) {
         let t = (t0.elapsed().as_secs_f64() / dura).min(1.0);
         // Arranca y frena suave.
         let s = t * t * (3.0 - 2.0 * t);
-        mover(v, m, desde + (hasta - desde) * s, y);
+        let recorrido = dist * s / f;
+        let salto = if t >= 1.0 { 0.0 } else { (recorrido / PASO * std::f64::consts::PI).sin().abs() * SALTITO * f };
+        mover(v, m, desde + (hasta - desde) * s, y - salto);
         if mirada.elapsed() >= Duration::from_secs(1) {
             nucleo.seguir(dir, -0.15);
             mirada = Instant::now();
@@ -96,6 +111,45 @@ fn caminar(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo, hasta: f64) {
             break;
         }
         std::thread::sleep(Duration::from_millis(16));
+    }
+}
+
+/// Se asoma por el borde más cercano: camina hasta ahí, se esconde un poco
+/// mirando para adentro, espera un rato y vuelve a entrar.
+fn asomarse(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo, pi: &Piso) {
+    let (Ok(p), Ok(t), Ok(f)) = (v.outer_position(), v.outer_size(), v.scale_factor()) else { return };
+    let x = p.x as f64;
+    let izquierda = x - pi.x0 < pi.x1 - x;
+    let (borde, afuera, adentro) = if izquierda {
+        (pi.x0, pi.x0 - t.width as f64 * AFUERA, pi.x0 + 40.0 * f)
+    } else {
+        (pi.x1, pi.x1 + t.width as f64 * AFUERA, pi.x1 - 40.0 * f)
+    };
+    let mirar = if izquierda { 0.9 } else { -0.9 };
+    caminar(v, m, nucleo, borde);
+    caminar_a(v, m, nucleo, afuera, VELOCIDAD * 0.4);
+    let hasta = Instant::now() + Duration::from_secs(6 + rand::random::<u64>() % 7);
+    while Instant::now() < hasta {
+        nucleo.seguir(mirar, 0.0);
+        std::thread::sleep(Duration::from_millis(800));
+    }
+    caminar_a(v, m, nucleo, adentro, VELOCIDAD * 0.6);
+}
+
+/// El tamaño (ancho lógico; el alto sigue la proporción del cuadro). Si
+/// estaba en el piso, sigue en el piso.
+pub fn tamano(v: &WebviewWindow, m: &Movida, ancho: f64, archivo: &PathBuf) {
+    let en_piso = match (piso(v), v.outer_position()) {
+        (Some(pi), Ok(p)) => (p.y as f64 - pi.y).abs() <= 2.0,
+        _ => false,
+    };
+    let _ = v.set_size(tauri::LogicalSize::new(ancho, (ancho * 172.0 / 320.0).round()));
+    let _ = std::fs::write(archivo, format!("{ancho}"));
+    if en_piso {
+        std::thread::sleep(Duration::from_millis(80));
+        if let (Some(pi), Ok(p)) = (piso(v), v.outer_position()) {
+            mover(v, m, (p.x as f64).clamp(pi.x0, pi.x1), pi.y);
+        }
     }
 }
 
@@ -133,6 +187,9 @@ pub fn arrancar(app: AppHandle, nucleo: Nucleo, carpeta: PathBuf) {
             let Some(v) = app.get_webview_window("cara") else { return };
             let m = app.state::<Movida>();
             let lugar = carpeta.join("lugar");
+            if let Some(a) = std::fs::read_to_string(carpeta.join("tamano")).ok().and_then(|s| s.trim().parse::<f64>().ok()) {
+                let _ = v.set_size(tauri::LogicalSize::new(a, (a * 172.0 / 320.0).round()));
+            }
             acomodar(&v, &m, &lugar);
             let mut cursor = PhysicalPosition::new(f64::NAN, f64::NAN);
             let mut presente = true;
@@ -207,11 +264,16 @@ pub fn arrancar(app: AppHandle, nucleo: Nucleo, carpeta: PathBuf) {
                     let panel = app.get_webview_window("panel").is_some_and(|pa| pa.is_visible().unwrap_or(false));
                     let Some(pi) = piso(&v) else { continue };
                     if presente && !encima && !panel && (y - pi.y).abs() <= 2.0 && arrastre == 0 {
-                        let ancho = pi.x1 - pi.x0;
-                        let hasta = pi.x0 + rand::random::<f64>() * ancho;
-                        if (hasta - x).abs() > 150.0 * f {
-                            caminar(&v, &m, &nucleo, hasta);
+                        // Una de cada cuatro, se asoma por un borde; si no, camina a otro lado.
+                        if rand::random::<u8>() % 4 == 0 {
+                            asomarse(&v, &m, &nucleo, &pi);
                             guardar_lugar(&lugar, &v);
+                        } else {
+                            let hasta = pi.x0 + rand::random::<f64>() * (pi.x1 - pi.x0);
+                            if (hasta - x).abs() > 150.0 * f {
+                                caminar(&v, &m, &nucleo, hasta);
+                                guardar_lugar(&lugar, &v);
+                            }
                         }
                     }
                 }

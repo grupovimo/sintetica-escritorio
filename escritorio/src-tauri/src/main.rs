@@ -14,9 +14,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
@@ -170,6 +171,50 @@ fn hoy(app: State<App>) -> serde_json::Value {
     })
 }
 
+fn sesion(app: &App) -> Result<String, String> {
+    std::fs::read_to_string(app.carpeta.join("sesion")).map(|s| s.trim().to_string()).map_err(|_| "primero sumalo a tu cuenta".into())
+}
+
+/// Los robots de la cuenta (las placas, el celu y esta compu), para el panel.
+#[tauri::command(async)]
+fn robots(app: State<App>) -> serde_json::Value {
+    let Ok(s) = sesion(&app) else { return json!([]) };
+    let Ok(r) = cuenta::pedir(&s, "/v1/bichos") else { return json!([]) };
+    let lista: Vec<_> = r["bichos"]
+        .as_array()
+        .map(|l| l.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .map(|b| {
+            let id = b["id"].as_str().unwrap_or_default();
+            json!({
+                "id": id,
+                "apodo": b["apodo"],
+                "perfil": b["perfil"],
+                "conectado": b["conectado"],
+                "este": id == &*app.nucleo.id,
+            })
+        })
+        .collect();
+    json!(lista)
+}
+
+/// Hablarle a otro robot de la cuenta (la placa del escritorio, el celu):
+/// contesta en su pantalla y la respuesta vuelve para el panel.
+#[tauri::command(async)]
+fn charlar_con(app: State<App>, id: String, texto: String) -> Result<String, String> {
+    let s = sesion(&app)?;
+    let r = cuenta::enviar(&s, "POST", &format!("/v1/bichos/{id}/charla"), json!({ "texto": texto }))?;
+    Ok(r["texto"].as_str().unwrap_or_default().to_string())
+}
+
+/// Un mimo a otro robot (como acariciarlo).
+#[tauri::command(async)]
+fn mimo(app: State<App>, id: String) -> Result<(), String> {
+    let s = sesion(&app)?;
+    cuenta::enviar(&s, "POST", &format!("/v1/bichos/{id}/comando"), json!({ "evento": "caricia" })).map(|_| ())
+}
+
 /// El panel al lado de la cara: el día, la charla y el renglón para hablarle.
 fn abrir_panel(app: &AppHandle) {
     let v = match app.get_webview_window("panel") {
@@ -233,6 +278,10 @@ fn mirar_globos(app: AppHandle) {
         .unwrap();
 }
 
+fn carpeta_app<R: tauri::Runtime>(app: &impl Manager<R>) -> PathBuf {
+    app.path().app_data_dir().unwrap_or_default()
+}
+
 fn abrir_consola(app: &AppHandle) {
     if let Some(v) = app.get_webview_window("consola") {
         let _ = v.show();
@@ -260,6 +309,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts([ATAJO])
@@ -289,9 +339,27 @@ fn main() {
             let hablar = MenuItem::with_id(app, "hablar", "Hablarle", true, Some(ATAJO))?;
             let consola = MenuItem::with_id(app, "consola", "Abrir la consola", true, None::<&str>)?;
             let sumar = MenuItem::with_id(app, "entrar", "Sumarlo a mi cuenta", true, None::<&str>)?;
+            let tamano = Submenu::with_items(
+                app,
+                "Tamaño",
+                true,
+                &[
+                    &MenuItem::with_id(app, "tam-200", "Chica", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "tam-280", "Mediana", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "tam-380", "Grande", true, None::<&str>)?,
+                ],
+            )?;
+            // Abrir al prender la compu: prendido la primera vez; después, lo que elijas.
+            let marca = carpeta_app(app).join("autoarranque");
+            if !marca.exists() {
+                let _ = app.autolaunch().enable();
+                let _ = std::fs::write(&marca, "1");
+            }
+            let al_prender = app.autolaunch().is_enabled().unwrap_or(false);
+            let arranque = CheckMenuItem::with_id(app, "arranque", "Abrir al prender la compu", true, al_prender, None::<&str>)?;
             let salir = MenuItem::with_id(app, "salir", "Salir", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(app, &[&mostrar, &hablar, &consola, &sumar, &sep, &salir])?;
+            let menu = Menu::with_items(app, &[&mostrar, &hablar, &consola, &sumar, &sep, &tamano, &arranque, &PredefinedMenuItem::separator(app)?, &salir])?;
             let mut bandeja = TrayIconBuilder::with_id("sintetica").menu(&menu).tooltip("Sintética");
             if let Some(i) = app.default_window_icon() {
                 bandeja = bandeja.icon(i.clone());
@@ -300,6 +368,16 @@ fn main() {
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "cara" => alternar_cara(app),
                     "hablar" => abrir_panel(app),
+                    "arranque" => {
+                        let a = app.autolaunch();
+                        let _ = if a.is_enabled().unwrap_or(false) { a.disable() } else { a.enable() };
+                    }
+                    t if t.starts_with("tam-") => {
+                        if let (Some(v), Ok(ancho)) = (app.get_webview_window("cara"), t[4..].parse::<f64>()) {
+                            let (m, archivo) = (app.state::<sentidos::Movida>(), carpeta_app(app).join("tamano"));
+                            sentidos::tamano(&v, &m, ancho, &archivo);
+                        }
+                    }
                     "consola" => abrir_consola(app),
                     "entrar" => entrar(app.clone()),
                     "salir" => app.exit(0),
@@ -321,7 +399,7 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel, esconder])
+        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel, esconder, robots, charlar_con, mimo])
         .run(tauri::generate_context!())
         .expect("no arrancó Sintética");
 }

@@ -117,3 +117,17 @@ pub fn pedir(sesion: &str, ruta: &str) -> Result<Value, String> {
     }
     Ok(r)
 }
+
+/// Un pedido con cuerpo de la cuenta (POST, PATCH, DELETE…).
+pub fn enviar(sesion: &str, metodo: &str, ruta: &str, cuerpo_json: Value) -> Result<Value, String> {
+    let (estado, r) = cuerpo(
+        agente()
+            .request(metodo, &format!("{}{ruta}", api()))
+            .set("Authorization", &format!("Bearer {sesion}"))
+            .send_json(cuerpo_json),
+    )?;
+    if !(200..300).contains(&estado) {
+        return Err(r["error"].as_str().map(str::to_string).unwrap_or_else(|| format!("{ruta}: {estado}")));
+    }
+    Ok(r)
+}

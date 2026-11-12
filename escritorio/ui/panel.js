@@ -41,6 +41,46 @@ async function cargarDia() {
   $('dia').replaceChildren(...items.map((i) => renglon(...i)));
 }
 
+// A quién le hablás: esta compu o cualquier robot de la cuenta (la placa del
+// escritorio, el celu); la respuesta sale en su pantalla y vuelve acá.
+const NOMBRES = { escritorio: 'Compu', 'dev-147b': 'Unidad', 'broche-c3': 'Broche', celu: 'Celu' };
+let robots = [];
+let elegido = null; // null = esta compu
+const nombreDe = (r) => (r.este ? 'Esta compu' : r.apodo || NOMBRES[r.perfil] || r.perfil);
+
+async function cargarRobots() {
+  robots = (await invoke('robots')) || [];
+  robots.sort((a, b) => (b.este ? 1 : 0) - (a.este ? 1 : 0));
+  // Con un solo robot (esta compu) no hace falta elegir.
+  if (robots.filter((r) => !r.este).length === 0) return $('robots').replaceChildren();
+  const chips = robots.map((r) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(r.este ? elegido === null : elegido === r.id));
+    const punto = document.createElement('i');
+    if (r.conectado || r.este) punto.className = 'en-linea';
+    b.append(punto, nombreDe(r));
+    b.addEventListener('click', () => {
+      elegido = r.este ? null : r.id;
+      cargarRobots();
+      $('frase').placeholder = r.este ? 'Decile algo…' : `Decile algo a ${nombreDe(r)}…`;
+      $('frase').focus();
+    });
+    return b;
+  });
+  const otro = robots.find((r) => r.id === elegido);
+  if (otro?.conectado) {
+    const m = document.createElement('button');
+    m.type = 'button';
+    m.className = 'mimo';
+    m.title = `Hacerle un mimo a ${nombreDe(otro)}`;
+    m.textContent = '♥';
+    m.addEventListener('click', () => invoke('mimo', { id: otro.id }));
+    chips.push(m);
+  }
+  $('robots').replaceChildren(...chips);
+}
+
 // La charla: se guarda en esta compu (las últimas 60).
 let charla = [];
 try { charla = JSON.parse(localStorage.getItem('charla') || '[]'); } catch { /* vacía */ }
@@ -48,7 +88,13 @@ function mostrar() {
   $('charla').replaceChildren(...charla.map((m) => {
     const p = document.createElement('p');
     p.className = m.quien + (m.aviso ? ' aviso' : '');
-    p.textContent = m.texto;
+    if (m.robot) {
+      const q = document.createElement('span');
+      q.className = 'quien';
+      q.textContent = m.robot;
+      p.append(q);
+    }
+    p.append(m.texto);
     return p;
   }));
   $('charla').scrollTop = $('charla').scrollHeight;
@@ -71,12 +117,24 @@ $('form').addEventListener('submit', async (e) => {
   const texto = $('frase').value.trim();
   if (!texto) return;
   $('frase').value = '';
-  sumar({ quien: 'vos', texto });
+  const otro = robots.find((r) => r.id === elegido);
+  sumar({ quien: 'vos', texto, robot: otro ? `a ${nombreDe(otro)}` : undefined });
+  if (otro) {
+    try {
+      const dijo = await invoke('charlar_con', { id: otro.id, texto });
+      if (dijo) sumar({ quien: 'el', texto: dijo, robot: nombreDe(otro) });
+    } catch (err) {
+      sumar({ quien: 'el', texto: String(err), robot: nombreDe(otro) });
+    }
+    return;
+  }
   const r = await invoke('charlar', { texto });
   // Lo que cambia algo (una alarma, un recordatorio) se ve en el día.
   if (r === 'entendio' || r === 'nube') setTimeout(cargarDia, 3000);
 });
 
 cargarDia();
+cargarRobots();
 setInterval(cargarDia, 5 * 60 * 1000);
+setInterval(cargarRobots, 30 * 1000);
 $('frase').focus();
