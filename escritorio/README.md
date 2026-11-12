@@ -13,8 +13,14 @@ la app. Esta app solo pone el anfitrión:
 | `src-tauri/src/nucleo.rs` | La API C (`firmware/api/sintetica_c.h`) en su hilo: el hal (hora, guardado en archivos), el tick y el último cuadro |
 | `src-tauri/src/red.rs` | MQTT a la nube con las credenciales que guarda el núcleo, como `Red.kt` |
 | `src-tauri/src/cuenta.rs` | Entrar con Telegram y `POST /v1/bichos/reclamar` (perfil `escritorio`), como `sumar.py` |
-| `src-tauri/src/main.rs` | La ventana de la cara, la bandeja y la consola (la web) |
-| `ui/` | La cara: dibuja los cuadros; toque, caricia y arrastre |
+| `src-tauri/src/parlante.rs` | La voz propia del núcleo (16 kHz) a la salida de audio de la compu (cpal) |
+| `src-tauri/src/main.rs` | La ventana de la cara, la bandeja, la consola (la web), la charla y el atajo para hablarle |
+| `ui/` | La cara: dibuja los cuadros; toque, caricia y arrastre; el renglón para hablarle |
+
+Hablarle: ⌘/Ctrl+Shift+Espacio (o doble clic en la cara) abre el renglón.
+Primero entiende el motor de charla del núcleo, sin red; si no, va a la nube
+(`bicho/{id}/charla`), que contesta con un Decir. `cargo test` prueba la charla
+y la voz contra el núcleo de verdad.
 
 La nube por defecto es producción; `SINTETICA_API=http://localhost:8080` usa la local.
 

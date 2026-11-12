@@ -5,6 +5,7 @@
 
 mod cuenta;
 mod nucleo;
+mod parlante;
 mod red;
 
 use std::path::PathBuf;
@@ -14,12 +15,16 @@ use serde_json::json;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_opener::OpenerExt;
 
 use nucleo::Nucleo;
+use parlante::Parlante;
 use red::Red;
 
 const CONSOLA: &str = "https://sintetica.grupovimo.com.ar/robots";
+// Para hablarle desde cualquier lado: aparece la cara con el renglón para escribir (o dictar).
+const ATAJO: &str = "CmdOrCtrl+Shift+Space";
 
 struct App {
     nucleo: Nucleo,
@@ -121,6 +126,39 @@ fn codigo(app: State<App>, codigo: String) -> Result<(), String> {
     cuenta::mandar_codigo(&e, codigo.trim())
 }
 
+/// Lo que le dijiste: primero el motor de charla propio (sin red, al toque);
+/// si no entiende, a la nube (bicho/{id}/charla: el motor de la nube y la IA),
+/// que contesta con un Decir. Sin nube, el "no entendí" del motor.
+#[tauri::command(async)]
+fn charlar(app: State<App>, texto: String) -> &'static str {
+    let mut texto = texto.trim().to_string();
+    while texto.len() > 200 {
+        texto.pop();
+    }
+    if texto.is_empty() {
+        return "nada";
+    }
+    let Some((codigo, frase)) = app.nucleo.charlar(texto.clone()) else { return "error" };
+    if codigo == 1 {
+        return "entendio";
+    }
+    if app.red.publicar("charla", json!({ "texto": texto }).to_string()) {
+        return "nube";
+    }
+    if !frase.is_empty() {
+        app.nucleo.decir(frase);
+    }
+    "sin-nube"
+}
+
+fn hablarle(app: &AppHandle) {
+    if let Some(v) = app.get_webview_window("cara") {
+        let _ = v.show();
+        let _ = v.set_focus();
+        let _ = v.emit("hablar", ());
+    }
+}
+
 fn abrir_consola(app: &AppHandle) {
     if let Some(v) = app.get_webview_window("consola") {
         let _ = v.show();
@@ -147,20 +185,34 @@ fn alternar_cara(app: &AppHandle) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcuts([ATAJO])
+                .expect("el atajo para hablarle")
+                .with_handler(|app, _, e| {
+                    if e.state == ShortcutState::Pressed {
+                        hablarle(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let carpeta = app.path().app_data_dir()?;
             std::fs::create_dir_all(&carpeta)?;
             let red = Arc::new(Red::default());
-            let nucleo = Nucleo::arrancar(carpeta.join("nucleo"), serie(&carpeta), red.clone());
+            let parlante = Parlante::default();
+            parlante.abrir();
+            let nucleo = Nucleo::arrancar(carpeta.join("nucleo"), serie(&carpeta), red.clone(), parlante);
             red.clone().mantener(nucleo.clone());
             app.manage(App { nucleo, red, carpeta, entrada: Mutex::new(None) });
 
             let mostrar = MenuItem::with_id(app, "cara", "Mostrar / esconder", true, None::<&str>)?;
+            let hablar = MenuItem::with_id(app, "hablar", "Hablarle", true, Some(ATAJO))?;
             let consola = MenuItem::with_id(app, "consola", "Abrir la consola", true, None::<&str>)?;
             let sumar = MenuItem::with_id(app, "entrar", "Sumarlo a mi cuenta", true, None::<&str>)?;
             let salir = MenuItem::with_id(app, "salir", "Salir", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(app, &[&mostrar, &consola, &sumar, &sep, &salir])?;
+            let menu = Menu::with_items(app, &[&mostrar, &hablar, &consola, &sumar, &sep, &salir])?;
             let mut bandeja = TrayIconBuilder::with_id("sintetica").menu(&menu).tooltip("Sintética");
             if let Some(i) = app.default_window_icon() {
                 bandeja = bandeja.icon(i.clone());
@@ -168,6 +220,7 @@ fn main() {
             bandeja
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "cara" => alternar_cara(app),
+                    "hablar" => hablarle(app),
                     "consola" => abrir_consola(app),
                     "entrar" => entrar(app.clone()),
                     "salir" => app.exit(0),
@@ -185,7 +238,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar])
+        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar])
         .run(tauri::generate_context!())
         .expect("no arrancó Sintética");
 }

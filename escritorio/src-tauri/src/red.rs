@@ -42,6 +42,16 @@ impl Red {
         self.conectado.load(Ordering::Relaxed)
     }
 
+    /// Un JSON a un tópico propio (bicho/{id}/charla…); false si no hay nube.
+    pub fn publicar(&self, topico: &str, json: String) -> bool {
+        if !self.en_linea() {
+            return false;
+        }
+        let Some(c) = self.cliente.lock().unwrap().clone() else { return false };
+        let id = self.id.lock().unwrap().clone();
+        c.try_publish(format!("bicho/{id}/{topico}"), QoS::AtLeastOnce, false, json.into_bytes()).is_ok()
+    }
+
     /// Sostiene la conexión para siempre: si cambian las credenciales, reconecta.
     pub fn mantener(self: Arc<Self>, nucleo: Nucleo) {
         *self.id.lock().unwrap() = nucleo.id.to_string();

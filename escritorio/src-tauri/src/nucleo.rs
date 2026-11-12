@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 
 use chrono::{Local, Offset, Timelike};
 
+use crate::parlante::Parlante;
+
 pub const PERFIL: &str = "escritorio";
 pub const ANCHO: c_int = 320;
 pub const ALTO: c_int = 172;
@@ -43,7 +45,29 @@ struct Hal {
     epoch: Option<extern "C" fn(*mut c_void) -> u32>,
     sonido: Option<extern "C" fn(*mut c_void, *const c_char)>,
     cargando: Option<extern "C" fn(*mut c_void) -> c_int>,
-    audio: *const c_void,
+    audio: Option<extern "C" fn(*mut c_void, *const i16, usize)>,
+}
+
+/// Lo que entendió el motor de charla (`sintetica_charla`, solo lo que se usa acá).
+#[repr(C)]
+struct Charla {
+    intencion: [c_char; 25],
+    confianza: c_int,
+    no_entendi: c_int,
+    falta: c_int,
+    accion: c_int,
+    accion_nombre: [c_char; 16],
+    dato: c_int,
+    minuto: c_int,
+    en_minutos: c_int,
+    dia: c_int,
+    semana: c_int,
+    dias: c_int,
+    texto: [c_char; 41],
+    frase: [c_char; 61],
+    expresion: [c_char; 25],
+    comportamiento: [c_char; 25],
+    confirma: c_int,
 }
 
 extern "C" {
@@ -63,6 +87,8 @@ extern "C" {
     fn sintetica_mostrar_qr();
     fn sintetica_qr_por_mantener(si: c_int);
     fn sintetica_fps_sugerido() -> c_int;
+    fn sintetica_charlar(texto: *const c_char, n: usize, salida: *mut Charla) -> c_int;
+    fn sintetica_decir(texto: *const c_char, expresion: *const c_char) -> c_int;
 }
 
 /// Lo que el núcleo le avisa al resto de la app.
@@ -75,6 +101,7 @@ struct Global {
     carpeta: PathBuf,
     inicio: Instant,
     anfitrion: Arc<dyn Anfitrion>,
+    parlante: Parlante,
     // Lo que notifica mientras la app se escribe a sí misma "por BLE".
     capturadas: Mutex<Option<Vec<(i32, Vec<u8>)>>>,
 }
@@ -165,6 +192,9 @@ extern "C" fn notificar_nube(_: *mut c_void, car: c_int, d: *const u8, n: usize)
 extern "C" fn red_cambio(_: *mut c_void) {
     g().anfitrion.red_cambio();
 }
+extern "C" fn audio(_: *mut c_void, m: *const i16, n: usize) {
+    g().parlante.encolar(unsafe { std::slice::from_raw_parts(m, n) });
+}
 extern "C" fn registrar(_: *mut c_void, m: *const c_char) {
     eprintln!("SinteticaOS: {}", unsafe { CStr::from_ptr(m) }.to_string_lossy());
 }
@@ -189,9 +219,9 @@ pub struct Nucleo {
 
 impl Nucleo {
     /// Arranca el núcleo en su hilo, con la serie `id` y lo guardado en `carpeta`.
-    pub fn arrancar(carpeta: PathBuf, id: String, anfitrion: Arc<dyn Anfitrion>) -> Nucleo {
+    pub fn arrancar(carpeta: PathBuf, id: String, anfitrion: Arc<dyn Anfitrion>, parlante: Parlante) -> Nucleo {
         std::fs::create_dir_all(&carpeta).ok();
-        let _ = GLOBAL.set(Global { carpeta, inicio: Instant::now(), anfitrion, capturadas: Mutex::new(None) });
+        let _ = GLOBAL.set(Global { carpeta, inicio: Instant::now(), anfitrion, parlante, capturadas: Mutex::new(None) });
         let (tx, rx) = channel::<Trabajo>();
         let cuadro = Arc::new(Mutex::new(Cuadro::default()));
         let c = cuadro.clone();
@@ -217,6 +247,24 @@ impl Nucleo {
 
     pub fn conexiones(&self, wifi: bool, nube: bool) {
         let _ = self.trabajos.send(Box::new(move || unsafe { sintetica_conexiones(wifi as c_int, nube as c_int) }));
+    }
+
+    /// La charla sin IA del núcleo, primero siempre: (1 entendió y ya
+    /// contestó con su voz; 0 no entendió, con la frase de "no entendí").
+    pub fn charlar(&self, texto: String) -> Option<(i32, String)> {
+        self.en_nucleo(move || {
+            let mut c: Charla = unsafe { std::mem::zeroed() };
+            let codigo = unsafe { sintetica_charlar(texto.as_ptr() as *const c_char, texto.len(), &mut c) };
+            (codigo, unsafe { CStr::from_ptr(c.frase.as_ptr()) }.to_string_lossy().into_owned())
+        })
+    }
+
+    /// Un globo (y lo dice en voz alta), como el comando 0x40 Decir.
+    pub fn decir(&self, frase: String) {
+        let Ok(f) = CString::new(frase) else { return };
+        let _ = self.trabajos.send(Box::new(move || unsafe {
+            sintetica_decir(f.as_ptr(), std::ptr::null());
+        }));
     }
 
     /// La nube guardada en el núcleo: (url, usuario, clave), si hay.
@@ -303,7 +351,7 @@ fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>) {
         epoch: Some(epoch),
         sonido: None,
         cargando: None,
-        audio: std::ptr::null(),
+        audio: Some(audio),
     }));
     unsafe {
         sintetica_iniciar(hal, ANCHO, ALTO);
@@ -331,5 +379,34 @@ fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>) {
                 t();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    struct Nadie;
+    impl Anfitrion for Nadie {
+        fn notificar_nube(&self, _: i32, _: &[u8]) {}
+        fn red_cambio(&self) {}
+    }
+
+    // Un solo test: el núcleo es uno por proceso.
+    #[test]
+    fn charla_sin_red_y_voz() {
+        let carpeta = std::env::temp_dir().join(format!("sintetica-prueba-{}", std::process::id()));
+        let parlante = Parlante::default();
+        let n = Nucleo::arrancar(carpeta.clone(), "02AABBCCDDEE".into(), Arc::new(Nadie), parlante.clone());
+        let (codigo, frase) = n.charlar("despertame mañana a las 7".into()).expect("el núcleo contesta");
+        assert_eq!(codigo, 1, "entiende la alarma sin red ({frase})");
+        let (codigo, frase) = n.charlar("explicame la teoría de cuerdas".into()).unwrap();
+        assert_eq!(codigo, 0, "lo que no sabe va a la nube");
+        assert!(!frase.is_empty(), "con la frase de no entendí");
+        // Lo dice en voz alta: llegan muestras al parlante.
+        n.decir("hola, soy yo".into());
+        std::thread::sleep(Duration::from_millis(1500));
+        assert!(parlante.encoladas() > 0, "la voz propia llega al parlante");
+        let _ = std::fs::remove_dir_all(carpeta);
     }
 }
