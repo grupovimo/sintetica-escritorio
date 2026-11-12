@@ -983,7 +983,7 @@ void Sistema::dibujarPantalla(uint32_t ahora) {
     lienzo_.limpiar(0x000000);
     return;
   }
-  if (emparejando_) {
+  if (emparejando_ && !sinPantallaQr_) {
     dibujarEmparejamiento(lienzo_, serie_, qr_, "ESPERANDO VÍNCULO", perfil_.redonda);
     return;
   }

@@ -86,6 +86,7 @@ extern "C" {
     fn sintetica_qr() -> *const c_char;
     fn sintetica_mostrar_qr();
     fn sintetica_qr_por_mantener(si: c_int);
+    fn sintetica_sin_pantalla_qr(si: c_int);
     fn sintetica_fps_sugerido() -> c_int;
     fn sintetica_charlar(texto: *const c_char, n: usize, salida: *mut Charla) -> c_int;
     fn sintetica_globo() -> *const c_char;
@@ -389,6 +390,7 @@ fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>, g
         sintetica_iniciar(hal, ANCHO, ALTO);
         // En la compu, dejar apretado es acariciarlo: se suma desde el menú.
         sintetica_qr_por_mantener(0);
+        sintetica_sin_pantalla_qr(1);
         sintetica_conexiones(1, 0);
     }
     let mut numero = 0u32;

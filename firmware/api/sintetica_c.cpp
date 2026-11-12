@@ -365,6 +365,7 @@ int sintetica_voz(int* volumen, int* microfono, int* tipo, const char** palabra)
 }
 int sintetica_fps_sugerido(void) { return g_sistema.fpsSugerido(); }
 void sintetica_qr_por_mantener(int si) { g_sistema.qrPorMantener(si != 0); }
+void sintetica_sin_pantalla_qr(int si) { g_sistema.sinPantallaQr(si != 0); }
 void sintetica_mostrar_qr(void) { g_sistema.mostrarQr(); }
 const char* sintetica_globo(void) { return g_sistema.globoVisible() ? g_sistema.textoGlobo() : ""; }
 void sintetica_seguir(float x, float y) { g_sistema.seguir(x, y); }

@@ -163,6 +163,9 @@ int sintetica_voz(int* volumen, int* microfono, int* tipo, const char** palabra)
 int sintetica_fps_sugerido(void);
 /* 0 = mantener apretado no muestra el QR (por defecto sí). */
 void sintetica_qr_por_mantener(int si);
+/* 1 = nunca dibuja la pantalla del QR (el escritorio se vincula solo, desde
+ * su menú): sin vínculo se ve la cara; el vínculo anda igual. */
+void sintetica_sin_pantalla_qr(int si);
 /* Muestra el QR para vincular otro celu un rato (como mantener el botón). */
 void sintetica_mostrar_qr(void);
 /* El texto del globo que se ve (lo que dice), "" si no hay. */
