@@ -217,6 +217,10 @@ ResultadoConfig leerPaso(const Json& j, int obj, const Config& c, Paso* p) {
   return {};
 }
 
+// Los pasos que se acaban de leer (después van al pozo de la config o, los de
+// fábrica, se descartan: se vuelven a leer de la flash al empezar).
+static Paso g_pasos[MAX_PASOS];
+
 ResultadoConfig leerComportamiento(const Json& j, int obj, const Config& c, Comportamiento* b) {
   if (!j.valido(obj) || j.tipo(obj) != TipoJson::Objeto) return falla("comportamiento: no es un objeto");
   char t[64];
@@ -270,20 +274,29 @@ ResultadoConfig leerComportamiento(const Json& j, int obj, const Config& c, Comp
     return falla("comportamiento: de 1 a 6 pasos");
   b->nPasos = 0;
   for (int i = 0; i < j.cantidad(ps); i++) {
-    b->pasos[i] = Paso();
-    ResultadoConfig rp = leerPaso(j, j.elemento(ps, i), c, &b->pasos[i]);
+    g_pasos[i] = Paso();
+    ResultadoConfig rp = leerPaso(j, j.elemento(ps, i), c, &g_pasos[i]);
     if (!rp.ok()) return rp;
     b->nPasos++;
   }
   return {};
 }
 
-ResultadoConfig guardarComportamiento(DatosVida& v, const Comportamiento& b) {
+// Guarda el comportamiento recién leído (con sus pasos en g_pasos).
+ResultadoConfig guardarComportamiento(DatosVida& v, Comportamiento b) {
   int i = v.indiceComportamiento(b.nombre);
-  if (i < 0) {
-    if (v.nComportamientos >= MAX_COMPORTAMIENTOS) return falla("demasiados comportamientos", ErrorConfig::Demasiadas);
-    i = v.nComportamientos++;
+  if (i < 0 && v.nComportamientos >= MAX_COMPORTAMIENTOS) return falla("demasiados comportamientos", ErrorConfig::Demasiadas);
+  if (b.propio) {
+    // Reemplazar uno propio reusa su lugar en el pozo.
+    int8_t pozo = i >= 0 ? v.comportamientos[i].propios : -1;
+    if (pozo < 0) {
+      if (v.nPropios >= MAX_PASOS_PROPIOS) return falla("demasiados comportamientos propios", ErrorConfig::Demasiadas);
+      pozo = static_cast<int8_t>(v.nPropios++);
+    }
+    for (int k = 0; k < b.nPasos; k++) v.pasosPropios[pozo][k] = g_pasos[k];
+    b.propios = pozo;
   }
+  if (i < 0) i = v.nComportamientos++;
   v.comportamientos[i] = b;
   return {};
 }
@@ -801,9 +814,11 @@ ResultadoConfig cargarVidaBase(Config& c) {
     if (!r.ok()) return r;
   }
   static Comportamiento b;
+  int8_t fabrica = 0;
   for (const DatoVidaBase& d : COMPORTAMIENTOS_BASE) {
     if (j.parsear(d.json, largo(d.json), g_tok, 260) <= 0) return falla("vida base: comportamiento inválido");
     b = Comportamiento();
+    b.fabrica = fabrica++;
     copiarTexto(b.nombre, sizeof b.nombre, d.nombre);
     ResultadoConfig r = leerComportamiento(j, 0, c, &b);
     if (!r.ok()) return r;
@@ -811,6 +826,25 @@ ResultadoConfig cargarVidaBase(Config& c) {
     if (!r.ok()) return r;
   }
   return {};
+}
+
+int pasosDe(const Config& c, const Comportamiento& b, Paso* salida) {
+  if (b.propios >= 0) {
+    for (int k = 0; k < b.nPasos; k++) salida[k] = c.vida.pasosPropios[b.propios][k];
+    return b.nPasos;
+  }
+  if (b.fabrica < 0 || b.fabrica >= CANTIDAD_COMPORTAMIENTOS_BASE) return 0;
+  const DatoVidaBase& d = COMPORTAMIENTOS_BASE[b.fabrica];
+  Json j;
+  if (j.parsear(d.json, largo(d.json), g_tok, 260) <= 0) return 0;
+  const int ps = j.buscar(0, "pasos");
+  int n = 0;
+  for (int i = 0; i < j.cantidad(ps) && n < MAX_PASOS; i++) {
+    salida[n] = Paso();
+    if (!leerPaso(j, j.elemento(ps, i), c, &salida[n]).ok()) return 0;
+    n++;
+  }
+  return n;
 }
 
 const char* reglasVidaBase() { return REGLAS_VIDA_BASE; }

@@ -1,6 +1,7 @@
 #include "motor_vida.h"
 
 #include "protocolo.h"
+#include "formato_vida.h"
 #include "vida_base.h"
 
 namespace sintetica {
@@ -1438,8 +1439,14 @@ bool MotorVida::comportamiento(int i, uint32_t) {
   if (actual_ != -1) {
     const Comportamiento& a = actual_ == -2 ? sintetico_ : v.comportamientos[actual_];
     if (!a.interrumpible && b.tipo == TipoComportamiento::Ocioso) return false;
-    terminarComportamiento();
   }
+  // Sus pasos: los de fábrica se leen de la flash recién ahora.
+  static Paso nuevos[MAX_PASOS];
+  const int n = pasosDe(*config_, b, nuevos);
+  if (n == 0) return false;
+  if (actual_ != -1) terminarComportamiento();
+  for (int k = 0; k < n; k++) enCurso_[k] = nuevos[k];
+  nEnCurso_ = static_cast<uint8_t>(n);
   actual_ = i;
   empezados_++;
   if (b.tipo == TipoComportamiento::Ocioso) {
@@ -1460,8 +1467,7 @@ bool MotorVida::comportamiento(int i, uint32_t) {
 }
 
 void MotorVida::empezarPaso(int i, bool primera) {
-  const Comportamiento& b = actual_ == -2 ? sintetico_ : config_->vida.comportamientos[actual_];
-  const Paso& p = b.pasos[i];
+  const Paso& p = enCurso_[i];
   const float t = static_cast<float>(t_);
   pasoActual_ = i;
   if (primera) vecesRestantes_ = static_cast<uint8_t>(azar_.entre(p.vecesMin, p.vecesMax) - 1);
@@ -1523,14 +1529,13 @@ void MotorVida::avanzarComportamiento() {
   if (actual_ == -1) return;
   const float t = static_cast<float>(t_);
   while (actual_ != -1 && t >= pasoHasta_) {
-    const Comportamiento& b = actual_ == -2 ? sintetico_ : config_->vida.comportamientos[actual_];
     if (vecesRestantes_ > 0) {
       vecesRestantes_--;
       empezarPaso(pasoActual_, false);
       pasoDesde_ = pasoHasta_ - (pasoHasta_ - pasoDesde_);
       continue;
     }
-    if (pasoActual_ + 1 < b.nPasos) {
+    if (pasoActual_ + 1 < nEnCurso_) {
       const float fin = pasoHasta_;
       empezarPaso(pasoActual_ + 1, true);
       // Sin perder tiempo en los saltos grandes.
@@ -1563,7 +1568,9 @@ void MotorVida::reaccionar(Config::Cara c, uint32_t ahora, uint32_t duracion) {
   copiarTexto(sintetico_.nombre, sizeof sintetico_.nombre, "reaccion");
   sintetico_.tipo = TipoComportamiento::Reaccion;
   sintetico_.nPasos = 1;
-  Paso& p = sintetico_.pasos[0];
+  nEnCurso_ = 1;
+  Paso& p = enCurso_[0];
+  p = Paso();
   p.cara = c.vida;
   p.duraMin = p.duraMax = static_cast<uint16_t>(minf(duracion, 60000));
   sinteticoDibujo_ = c.dibujo;

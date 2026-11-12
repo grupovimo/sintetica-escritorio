@@ -15,6 +15,9 @@ ResultadoConfig leerCaraVida(const Json& j, int obj, Config& c, const char* nomb
 ResultadoConfig leerVidaConfig(const Json& j, int raiz, Config& c);
 // Las expresiones paramétricas y los comportamientos base (shared/formato/vida).
 ResultadoConfig cargarVidaBase(Config& c);
+// Los pasos de un comportamiento (hasta MAX_PASOS) en `salida`: los de la
+// config, de su pozo; los de fábrica, leídos de la flash. Devuelve cuántos.
+int pasosDe(const Config& c, const Comportamiento& b, Paso* salida);
 // Las reglas base del motor de vida (un arreglo JSON, como "reglas").
 const char* reglasVidaBase();
 

@@ -100,7 +100,22 @@ fn entrar(handle: AppHandle) {
     });
 }
 
-#[tauri::command]
+/// Si hay que pedir que lo compre: sumado, sin licencia y con la prueba vencida.
+#[tauri::command(async)]
+fn licencia(app: State<App>) -> serde_json::Value {
+    let Ok(sesion) = std::fs::read_to_string(app.carpeta.join("sesion")) else { return json!({}) };
+    cuenta::licencia(sesion.trim()).unwrap_or_else(|_| json!({}))
+}
+
+#[tauri::command(async)]
+fn comprar(handle: AppHandle) -> Result<(), String> {
+    let app = handle.state::<App>();
+    let sesion = std::fs::read_to_string(app.carpeta.join("sesion")).map_err(|_| "primero sumalo a tu cuenta")?;
+    let url = cuenta::comprar(sesion.trim())?;
+    handle.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
 fn codigo(app: State<App>, codigo: String) -> Result<(), String> {
     let e = app.entrada.lock().unwrap().clone().ok_or("no hay una entrada en curso")?;
     cuenta::mandar_codigo(&e, codigo.trim())
@@ -170,7 +185,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo])
+        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar])
         .run(tauri::generate_context!())
         .expect("no arrancó Sintética");
 }

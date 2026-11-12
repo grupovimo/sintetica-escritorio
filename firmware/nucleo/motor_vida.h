@@ -365,6 +365,9 @@ class MotorVida {
 
   // Comportamiento en curso.
   Comportamiento sintetico_;   // para "expresion:x" de las reglas (un paso)
+  // Los pasos del comportamiento en curso (copiados de la config o leídos de la flash).
+  Paso enCurso_[MAX_PASOS];
+  uint8_t nEnCurso_ = 0;
   int actual_ = -1;            // índice, o -2 = el sintético
   int pasoActual_ = 0;
   int pasoCara_ = -1;

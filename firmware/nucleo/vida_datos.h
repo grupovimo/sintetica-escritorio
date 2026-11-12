@@ -14,6 +14,7 @@ constexpr int MAX_CARAS_VIDA = 48;
 constexpr int MAX_AJUSTES = 28;
 constexpr int MAX_COMPORTAMIENTOS = 75;  // 66 de base + 9 del usuario
 constexpr int MAX_PASOS = 6;
+constexpr int MAX_PASOS_PROPIOS = 16;  // comportamientos de la config (nuevos o que reemplazan uno de fábrica)
 constexpr int MAX_CUANDO = 3;
 constexpr int LARGO_VIDA = 25;  // nombres: 24 bytes + terminador
 constexpr int8_t DENTRO_SUENO = 100;  // "dentro": "sueno": un corazón, una estrella, una nota o una oveja
@@ -168,8 +169,12 @@ struct Comportamiento {
   float probabilidad = 1;         // < 1: raro (se tira el dado cada vez que se lo considera)
   bool interrumpible = true;
   uint8_t nPasos = 0;
-  Paso pasos[MAX_PASOS];
   bool propio = false;
+  // Los pasos no viven acá (en RAM pesarían ~10 KB): los de fábrica se leen de
+  // la flash (vida_base.h) al empezar y los de la config, de
+  // DatosVida::pasosPropios. Ver pasosDe() en formato_vida.h.
+  int8_t fabrica = -1;  // índice en COMPORTAMIENTOS_BASE
+  int8_t propios = -1;  // índice en DatosVida::pasosPropios
 };
 
 // Los ajustes del motor de vida que vienen en la config.
@@ -185,6 +190,8 @@ struct DatosVida {
   CaraVida caras[MAX_CARAS_VIDA];
   uint8_t nComportamientos = 0;
   Comportamiento comportamientos[MAX_COMPORTAMIENTOS];
+  uint8_t nPropios = 0;
+  Paso pasosPropios[MAX_PASOS_PROPIOS][MAX_PASOS];
   uint8_t nImagenes = 0;
   CaraImagen imagenes[MAX_CARAS_IMAGEN];
   int8_t reposo = -1;             // "cara": {"expresion": …}: la cara de siempre (-1 = la neutral)

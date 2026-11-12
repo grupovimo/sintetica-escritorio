@@ -85,3 +85,25 @@ pub fn reclamar(sesion: &str, id: &str, perfil: &str) -> Result<(String, String,
     let s = |k: &str| m[k].as_str().unwrap_or_default().to_string();
     Ok((s("url"), s("usuario"), s("clave")))
 }
+
+/// La licencia del escritorio (GET /v1/escritorio): {licencia, enPrueba, venta, precio…}.
+pub fn licencia(sesion: &str) -> Result<Value, String> {
+    let (estado, r) = cuerpo(
+        agente().get(&format!("{}/v1/escritorio", api())).set("Authorization", &format!("Bearer {sesion}")).call(),
+    )?;
+    if estado != 200 {
+        return Err(format!("no pude ver la licencia ({estado})"));
+    }
+    Ok(r)
+}
+
+/// El link de pago de la licencia (POST /v1/escritorio/comprar).
+pub fn comprar(sesion: &str) -> Result<String, String> {
+    let (estado, r) = cuerpo(
+        agente().post(&format!("{}/v1/escritorio/comprar", api())).set("Authorization", &format!("Bearer {sesion}")).call(),
+    )?;
+    match r["url"].as_str() {
+        Some(u) if estado == 201 => Ok(u.to_string()),
+        _ => Err(r["error"].as_str().unwrap_or("no se pudo comprar").to_string()),
+    }
+}

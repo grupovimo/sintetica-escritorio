@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
+          - os: macos-15-intel  # la cola arm64 de GitHub no da máquina (como iOS, 10/11)
             nombre: mac
             args: --target universal-apple-darwin
             objetivos: aarch64-apple-darwin,x86_64-apple-darwin

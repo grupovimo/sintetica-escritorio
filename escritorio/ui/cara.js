@@ -57,6 +57,16 @@ async function revisar() {
 setInterval(revisar, 3000);
 revisar();
 
+// La licencia (pago único): después de la prueba, el botón para comprarlo.
+async function revisarLicencia() {
+  const l = await invoke('licencia');
+  $('compra').hidden = !(l.venta && l.licencia === false && l.enPrueba === false);
+  if (l.precio) $('comprar').title = `Comprarlo · $ ${l.precio.toLocaleString('es-AR')} (pago único)`;
+}
+setInterval(revisarLicencia, 30 * 60 * 1000);
+revisarLicencia();
+$('comprar').addEventListener('click', () => invoke('comprar').then(() => setTimeout(revisarLicencia, 60000)));
+
 $('entrar').addEventListener('click', () => {
   $('entrar').hidden = true;
   $('paso').textContent = '…';
@@ -79,5 +89,5 @@ listen('entrada', ({ payload: p }) => {
     $('paso').title = p.dato;
     $('entrar').hidden = false;
   }
-  if (p.paso === 'listo') setTimeout(revisar, 500);
+  if (p.paso === 'listo') setTimeout(() => { revisar(); revisarLicencia(); }, 500);
 });
