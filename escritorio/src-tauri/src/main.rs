@@ -4,9 +4,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cuenta;
+mod fondo;
 mod nucleo;
 mod parlante;
 mod red;
+mod sentidos;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -153,7 +155,7 @@ fn charlar(app: State<App>, texto: String) -> &'static str {
 }
 
 /// Lo del día para el panel: la config del robot (recordatorios, despertador),
-/// la agenda y el clima. Sin sumar a la cuenta, nada.
+/// la agenda, el clima y los mails sin leer. Sin sumar a la cuenta, nada.
 #[tauri::command(async)]
 fn hoy(app: State<App>) -> serde_json::Value {
     let Ok(sesion) = std::fs::read_to_string(app.carpeta.join("sesion")) else { return json!({}) };
@@ -164,6 +166,7 @@ fn hoy(app: State<App>) -> serde_json::Value {
         "despertador": config.as_ref().map(|c| c["despertador"].clone()).unwrap_or_default(),
         "agenda": cuenta::pedir(sesion, "/v1/agenda").map(|a| a["proximos"].clone()).unwrap_or_default(),
         "clima": cuenta::pedir(sesion, &format!("/v1/bichos/{id}/clima")).map(|c| c["clima"].clone()).unwrap_or_default(),
+        "correo": cuenta::pedir(sesion, "/v1/correo").map(|c| c["noLeidos"].clone()).unwrap_or_default(),
     })
 }
 
@@ -196,6 +199,13 @@ fn abrir_panel(app: &AppHandle) {
 #[tauri::command]
 fn panel(handle: AppHandle) {
     abrir_panel(&handle);
+}
+
+#[tauri::command]
+fn esconder(handle: AppHandle) {
+    if let Some(v) = handle.get_webview_window("cara") {
+        let _ = v.hide();
+    }
 }
 
 /// Cada globo nuevo va al panel (la charla); si era un recordatorio o el
@@ -271,6 +281,9 @@ fn main() {
             red.clone().mantener(nucleo.clone());
             app.manage(App { nucleo, red, carpeta, entrada: Mutex::new(None) });
             mirar_globos(app.handle().clone());
+            app.manage(sentidos::Movida::default());
+            let a = app.state::<App>();
+            sentidos::arrancar(app.handle().clone(), a.nucleo.clone(), a.carpeta.clone());
 
             let mostrar = MenuItem::with_id(app, "cara", "Mostrar / esconder", true, None::<&str>)?;
             let hablar = MenuItem::with_id(app, "hablar", "Hablarle", true, Some(ATAJO))?;
@@ -296,15 +309,19 @@ fn main() {
             Ok(())
         })
         // Cerrar la cara la esconde: el robot sigue vivo en la bandeja.
-        .on_window_event(|v, e| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                if v.label() == "cara" {
-                    api.prevent_close();
-                    let _ = v.hide();
+        .on_window_event(|v, e| match e {
+            tauri::WindowEvent::CloseRequested { api, .. } if v.label() == "cara" => {
+                api.prevent_close();
+                let _ = v.hide();
+            }
+            tauri::WindowEvent::Moved(_) if v.label() == "cara" => {
+                if let Some(m) = v.try_state::<sentidos::Movida>() {
+                    m.arrastrada();
                 }
             }
+            _ => {}
         })
-        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel])
+        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel, esconder])
         .run(tauri::generate_context!())
         .expect("no arrancó Sintética");
 }

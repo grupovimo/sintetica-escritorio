@@ -77,6 +77,7 @@ extern "C" {
     fn sintetica_alto() -> c_int;
     fn sintetica_pixeles_rgba(salida: *mut u8);
     fn sintetica_tacto(apretado: c_int);
+    fn sintetica_seguir(x: f32, y: f32);
     fn sintetica_ble_conexion(conectado: c_int);
     fn sintetica_ble_escribir(car: c_int, datos: *const u8, n: usize);
     fn sintetica_ble_estado(salida: *mut u8, cap: usize) -> usize;
@@ -238,6 +239,8 @@ pub struct Cuadro {
     pub ancho: u16,
     pub alto: u16,
     pub rgba: Vec<u8>,
+    /// Lo que se ve de la cara (x0, y0, x1, y1), sin el fondo: para los clics.
+    pub caja: Option<(u16, u16, u16, u16)>,
 }
 
 #[derive(Clone)]
@@ -272,6 +275,17 @@ impl Nucleo {
 
     pub fn tocar(&self, apretado: bool) {
         let _ = self.trabajos.send(Box::new(move || unsafe { sintetica_tacto(apretado as c_int) }));
+    }
+
+    /// Mirar hacia algo (de -1 a 1; y para arriba): el mouse, adónde camina.
+    /// Dura 2,5 s; después vuelve a mirar solo.
+    pub fn seguir(&self, x: f32, y: f32) {
+        let _ = self.trabajos.send(Box::new(move || unsafe { sintetica_seguir(x, y) }));
+    }
+
+    /// Volviste a la compu o te fuiste (el comando 0x49 Presencia, como el celu).
+    pub fn presencia(&self, llegaste: bool) {
+        self.nube_escribir(CAR_COMANDO, vec![0x49, if llegaste { 0 } else { 1 }]);
     }
 
     pub fn nube_escribir(&self, car: i32, datos: Vec<u8>) {
@@ -414,8 +428,9 @@ fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>, g
         let (w, h) = unsafe { (sintetica_ancho(), sintetica_alto()) };
         let mut rgba = vec![0u8; (w * h * 4) as usize];
         unsafe { sintetica_pixeles_rgba(rgba.as_mut_ptr()) };
+        let caja = crate::fondo::sacar(&mut rgba, w as usize, h as usize);
         numero = numero.wrapping_add(1);
-        *cuadro.lock().unwrap() = Cuadro { numero, ancho: w as u16, alto: h as u16, rgba };
+        *cuadro.lock().unwrap() = Cuadro { numero, ancho: w as u16, alto: h as u16, rgba, caja };
         let fps = unsafe { sintetica_fps_sugerido() }.clamp(5, 60) as u64;
         let paso = Duration::from_millis(1000 / fps);
         if let Some(resto) = paso.checked_sub(inicio.elapsed()) {

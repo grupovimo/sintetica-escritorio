@@ -14,16 +14,16 @@
         "label": "cara",
         "title": "Sintética",
         "url": "index.html",
-        "width": 344,
-        "height": 196,
-        "minWidth": 172,
-        "minHeight": 98,
+        "width": 280,
+        "height": 151,
+        "minWidth": 160,
+        "minHeight": 86,
         "decorations": false,
         "transparent": true,
         "shadow": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "resizable": true
+        "resizable": false
       }
     ],
     "security": {

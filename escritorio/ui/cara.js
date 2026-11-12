@@ -30,7 +30,7 @@ requestAnimationFrame(dibujar);
 // Tocar o mover: si el puntero se corre más de 4 px antes de soltar, es arrastrar.
 let apretado = null;
 $('pantalla').addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || e.target.closest('.sumar')) return;
+  if (e.button !== 0 || e.target.closest('.sumar, .botones')) return;
   apretado = { x: e.screenX, y: e.screenY, tocando: true };
   invoke('tocar', { apretado: true });
 });
@@ -94,5 +94,7 @@ listen('entrada', ({ payload: p }) => {
 
 // Doble clic: el panel (el día y la charla).
 $('pantalla').addEventListener('dblclick', (e) => {
-  if (!e.target.closest('.sumar')) invoke('panel');
+  if (!e.target.closest('.sumar, .botones')) invoke('panel');
 });
+$('b-hablar').addEventListener('click', () => invoke('panel'));
+$('b-esconder').addEventListener('click', () => invoke('esconder'));

@@ -47,6 +47,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 800; text-transform: capitalize; }
   border-radius: 12px;
   background: var(--tarjeta);
 }
+.dia li span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dia .hora { font-variant-numeric: tabular-nums; color: var(--suave); }
 .dia .pasado { opacity: 0.45; }
 .vacio { margin: 0; padding: 0 16px 12px; color: var(--suave); }

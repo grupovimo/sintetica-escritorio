@@ -16,7 +16,7 @@ function renglon(icono, hora, texto) {
     s.textContent = t;
     li.append(s);
   }
-  if (hora && hora < hhmm(new Date())) li.classList.add('pasado');
+  if (hora && hora < hhmm(new Date()) && icono !== '✉️') li.classList.add('pasado');
   return li;
 }
 
@@ -36,6 +36,8 @@ async function cargarDia() {
   for (const r of d.recordatorios || []) if (hoyToca(r)) items.push(['⏰', r.hora, r.texto]);
   if (hoyToca(d.despertador)) items.push(['☀️', d.despertador.hora, 'Despertador']);
   items.sort((a, b) => a[1].localeCompare(b[1]));
+  // Los mails sin leer (Gmail, Outlook), al final: los tres últimos.
+  for (const m of (d.correo || []).slice(0, 3)) items.push(['✉️', hhmm(new Date(m.en)), `${m.de}: ${m.asunto}`]);
   $('dia').replaceChildren(...items.map((i) => renglon(...i)));
 }
 

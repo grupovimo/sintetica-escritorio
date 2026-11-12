@@ -4,7 +4,6 @@
   --texto: #f3eee6;
   --acento: #ff6a2b;
   --bien: #5fd38d;
-  color-scheme: dark;
 }
 
 [hidden] { display: none !important; }
@@ -20,25 +19,46 @@ html, body {
   -webkit-user-select: none;
 }
 
-/* La pantalla del robot: un marco oscuro redondeado con la cara adentro. */
+/* Sin caja: solo la cara (el fondo ya viene transparente del núcleo) con una
+   sombra suave para que se despegue de cualquier fondo de pantalla. */
 .pantalla {
   position: absolute;
-  inset: 6px;
-  border-radius: 22px;
-  background: var(--marco);
-  box-shadow: inset 0 0 0 1px var(--borde), 0 6px 16px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
+  inset: 0;
   cursor: grab;
 }
 
 canvas {
   position: absolute;
-  inset: 8px;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  border-radius: 14px;
-  object-fit: contain;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.35));
 }
+
+/* Con el mouse encima: los botones y el puntito de la nube. */
+.botones {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.botones button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  background: rgba(23, 20, 15, 0.85);
+  color: var(--texto);
+  box-shadow: inset 0 0 0 1px var(--borde), 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.pantalla:hover .botones, .pantalla:hover .punto { opacity: 1; }
 
 .punto {
   position: absolute;
@@ -48,7 +68,8 @@ canvas {
   height: 6px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.18);
-  transition: background 0.4s;
+  opacity: 0;
+  transition: background 0.4s, opacity 0.2s;
 }
 .punto.en-linea { background: var(--bien); }
 
