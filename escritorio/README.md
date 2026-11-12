@@ -17,7 +17,12 @@ la app. Esta app solo pone el anfitrión:
 | `src-tauri/src/main.rs` | La ventana de la cara, la bandeja, la consola (la web), la charla y el atajo para hablarle |
 | `ui/` | La cara: dibuja los cuadros; toque, caricia y arrastre; el renglón para hablarle |
 
-Hablarle: ⌘/Ctrl+Shift+Espacio (o doble clic en la cara) abre el renglón.
+El panel (`ui/panel.*`, al lado de la cara): el día (agenda, recordatorios,
+despertador y clima, de la cuenta), la charla y el renglón para hablarle. Cada
+globo del núcleo llega a la charla; si es un recordatorio o el despertador,
+también como notificación del sistema.
+
+Hablarle: ⌘/Ctrl+Shift+Espacio (o doble clic en la cara) abre el panel.
 Primero entiende el motor de charla del núcleo, sin red; si no, va a la nube
 (`bicho/{id}/charla`), que contesta con un Decir. `cargo test` prueba la charla
 y la voz contra el núcleo de verdad.

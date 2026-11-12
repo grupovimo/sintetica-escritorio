@@ -30,7 +30,7 @@ requestAnimationFrame(dibujar);
 // Tocar o mover: si el puntero se corre más de 4 px antes de soltar, es arrastrar.
 let apretado = null;
 $('pantalla').addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || e.target.closest('.sumar, .charla')) return;
+  if (e.button !== 0 || e.target.closest('.sumar')) return;
   apretado = { x: e.screenX, y: e.screenY, tocando: true };
   invoke('tocar', { apretado: true });
 });
@@ -92,35 +92,7 @@ listen('entrada', ({ payload: p }) => {
   if (p.paso === 'listo') setTimeout(() => { revisar(); revisarLicencia(); }, 500);
 });
 
-// Hablarle: el atajo (o el menú) o doble clic abren el renglón; Enter lo
-// manda, Escape lo cierra. Contesta en la cara y con su voz.
-function abrirCharla() {
-  $('charla').hidden = false;
-  $('frase').focus();
-}
-function cerrarCharla() {
-  $('charla').hidden = true;
-  $('frase').value = '';
-}
-listen('hablar', abrirCharla);
+// Doble clic: el panel (el día y la charla).
 $('pantalla').addEventListener('dblclick', (e) => {
-  if (!e.target.closest('.sumar, .charla')) abrirCharla();
-});
-$('frase').addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') cerrarCharla();
-});
-$('charla').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const texto = $('frase').value.trim();
-  if (!texto) return cerrarCharla();
-  $('frase').value = '';
-  $('frase').placeholder = '…';
-  await invoke('charlar', { texto });
-  $('frase').placeholder = 'Decile algo…';
-});
-// Si deja de usarlo un rato, el renglón se va solo.
-let quieto;
-$('frase').addEventListener('input', () => clearTimeout(quieto));
-$('frase').addEventListener('blur', () => {
-  quieto = setTimeout(() => { if (!$('frase').value) cerrarCharla(); }, 8000);
+  if (!e.target.closest('.sumar')) invoke('panel');
 });

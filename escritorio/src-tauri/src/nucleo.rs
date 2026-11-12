@@ -88,6 +88,7 @@ extern "C" {
     fn sintetica_qr_por_mantener(si: c_int);
     fn sintetica_fps_sugerido() -> c_int;
     fn sintetica_charlar(texto: *const c_char, n: usize, salida: *mut Charla) -> c_int;
+    fn sintetica_globo() -> *const c_char;
     fn sintetica_decir(texto: *const c_char, expresion: *const c_char) -> c_int;
 }
 
@@ -102,6 +103,8 @@ struct Global {
     inicio: Instant,
     anfitrion: Arc<dyn Anfitrion>,
     parlante: Parlante,
+    // Lo que avisó solo (recordatorio, despertador) y todavía no se mostró: su globo es el aviso.
+    aviso: Mutex<Option<Aviso>>,
     // Lo que notifica mientras la app se escribe a sí misma "por BLE".
     capturadas: Mutex<Option<Vec<(i32, Vec<u8>)>>>,
 }
@@ -187,7 +190,19 @@ extern "C" fn notificar(_: *mut c_void, car: c_int, d: *const u8, n: usize) {
     }
 }
 extern "C" fn notificar_nube(_: *mut c_void, car: c_int, d: *const u8, n: usize) {
-    g().anfitrion.notificar_nube(car, unsafe { std::slice::from_raw_parts(d, n) });
+    let d = unsafe { std::slice::from_raw_parts(d, n) };
+    // Los avisos solos (protocolo-ble.md, "Eventos que avisa el bicho solo"): [0x9E][0x00][n][u32][0x00][evento]…
+    if d.len() >= 9 && d[0] == 0x9E && d[7] == 0x00 {
+        let aviso = match d[8] {
+            0x1F => Some(Aviso::Recordatorio),
+            0x21 => Some(Aviso::Despertador),
+            _ => None,
+        };
+        if aviso.is_some() {
+            *g().aviso.lock().unwrap() = aviso;
+        }
+    }
+    g().anfitrion.notificar_nube(car, d);
 }
 extern "C" fn red_cambio(_: *mut c_void) {
     g().anfitrion.red_cambio();
@@ -200,6 +215,20 @@ extern "C" fn registrar(_: *mut c_void, m: *const c_char) {
 }
 
 type Trabajo = Box<dyn FnOnce() + Send>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Aviso {
+    Recordatorio,
+    Despertador,
+}
+
+/// Lo último que dijo en su globo (cada globo nuevo sube el número) y si era un aviso.
+#[derive(Clone, Default)]
+pub struct Globo {
+    pub numero: u32,
+    pub texto: String,
+    pub aviso: Option<Aviso>,
+}
 
 /// El último cuadro (RGBA) y cuál es.
 #[derive(Default)]
@@ -214,6 +243,7 @@ pub struct Cuadro {
 pub struct Nucleo {
     trabajos: Sender<Trabajo>,
     pub cuadro: Arc<Mutex<Cuadro>>,
+    pub globo: Arc<Mutex<Globo>>,
     pub id: Arc<str>,
 }
 
@@ -221,13 +251,15 @@ impl Nucleo {
     /// Arranca el núcleo en su hilo, con la serie `id` y lo guardado en `carpeta`.
     pub fn arrancar(carpeta: PathBuf, id: String, anfitrion: Arc<dyn Anfitrion>, parlante: Parlante) -> Nucleo {
         std::fs::create_dir_all(&carpeta).ok();
-        let _ = GLOBAL.set(Global { carpeta, inicio: Instant::now(), anfitrion, parlante, capturadas: Mutex::new(None) });
+        let _ = GLOBAL.set(Global { carpeta, inicio: Instant::now(), anfitrion, parlante, aviso: Mutex::new(None), capturadas: Mutex::new(None) });
         let (tx, rx) = channel::<Trabajo>();
         let cuadro = Arc::new(Mutex::new(Cuadro::default()));
         let c = cuadro.clone();
+        let globo = Arc::new(Mutex::new(Globo::default()));
+        let gl = globo.clone();
         let ident = CString::new(id.clone()).unwrap();
-        std::thread::Builder::new().name("nucleo".into()).spawn(move || vivir(ident, rx, c)).unwrap();
-        Nucleo { trabajos: tx, cuadro, id: id.into() }
+        std::thread::Builder::new().name("nucleo".into()).spawn(move || vivir(ident, rx, c, gl)).unwrap();
+        Nucleo { trabajos: tx, cuadro, globo, id: id.into() }
     }
 
     /// Corre `f` en el hilo del núcleo y espera lo que devuelve.
@@ -322,7 +354,7 @@ impl Nucleo {
     }
 }
 
-fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>) {
+fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>, globo: Arc<Mutex<Globo>>) {
     let perfil = CString::new(PERFIL).unwrap();
     let version = CString::new(concat!("escritorio-", env!("CARGO_PKG_VERSION"))).unwrap();
     let hal = Box::leak(Box::new(Hal {
@@ -366,6 +398,17 @@ fn vivir(id: CString, trabajos: Receiver<Trabajo>, cuadro: Arc<Mutex<Cuadro>>) {
             t();
         }
         unsafe { sintetica_tick() };
+        let dice = unsafe { CStr::from_ptr(sintetica_globo()) }.to_bytes();
+        {
+            let mut gl = globo.lock().unwrap();
+            if gl.texto.as_bytes() != dice {
+                gl.texto = String::from_utf8_lossy(dice).into_owned();
+                if !dice.is_empty() {
+                    gl.numero = gl.numero.wrapping_add(1);
+                    gl.aviso = g().aviso.lock().unwrap().take();
+                }
+            }
+        }
         let (w, h) = unsafe { (sintetica_ancho(), sintetica_alto()) };
         let mut rgba = vec![0u8; (w * h * 4) as usize];
         unsafe { sintetica_pixeles_rgba(rgba.as_mut_ptr()) };

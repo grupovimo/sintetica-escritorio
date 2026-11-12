@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sintética</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <h1 id="fecha"></h1>
+    <span id="clima"></span>
+  </header>
+  <ul class="dia" id="dia"></ul>
+  <p class="vacio" id="sin-sumar" hidden>Sumalo a tu cuenta para ver tu día</p>
+
+  <section class="charla" id="charla" aria-live="polite"></section>
+
+  <form id="form">
+    <input id="frase" maxlength="200" autocomplete="off" placeholder="Decile algo…">
+    <button type="submit" aria-label="Mandar">↑</button>
+  </form>
+  <script src="panel.js"></script>
+</body>
+</html>

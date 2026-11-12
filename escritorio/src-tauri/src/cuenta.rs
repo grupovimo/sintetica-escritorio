@@ -107,3 +107,13 @@ pub fn comprar(sesion: &str) -> Result<String, String> {
         _ => Err(r["error"].as_str().unwrap_or("no se pudo comprar").to_string()),
     }
 }
+
+/// Un GET de la cuenta (la config del robot, la agenda, el clima).
+pub fn pedir(sesion: &str, ruta: &str) -> Result<Value, String> {
+    let (estado, r) =
+        cuerpo(agente().get(&format!("{}{ruta}", api())).set("Authorization", &format!("Bearer {sesion}")).call())?;
+    if estado != 200 {
+        return Err(format!("{ruta}: {estado}"));
+    }
+    Ok(r)
+}

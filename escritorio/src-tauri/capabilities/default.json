@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "La cara: sus comandos y moverla.",
-  "windows": ["cara"],
+  "description": "La cara y el panel: sus comandos, moverla y esconderla.",
+  "windows": ["cara", "panel"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

@@ -16,14 +16,15 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::ShortcutState;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
-use nucleo::Nucleo;
+use nucleo::{Aviso, Nucleo};
 use parlante::Parlante;
 use red::Red;
 
 const CONSOLA: &str = "https://sintetica.grupovimo.com.ar/robots";
-// Para hablarle desde cualquier lado: aparece la cara con el renglón para escribir (o dictar).
+// Para hablarle desde cualquier lado: abre el panel con el renglón para escribir (o dictar).
 const ATAJO: &str = "CmdOrCtrl+Shift+Space";
 
 struct App {
@@ -151,12 +152,75 @@ fn charlar(app: State<App>, texto: String) -> &'static str {
     "sin-nube"
 }
 
-fn hablarle(app: &AppHandle) {
-    if let Some(v) = app.get_webview_window("cara") {
-        let _ = v.show();
-        let _ = v.set_focus();
-        let _ = v.emit("hablar", ());
-    }
+/// Lo del día para el panel: la config del robot (recordatorios, despertador),
+/// la agenda y el clima. Sin sumar a la cuenta, nada.
+#[tauri::command(async)]
+fn hoy(app: State<App>) -> serde_json::Value {
+    let Ok(sesion) = std::fs::read_to_string(app.carpeta.join("sesion")) else { return json!({}) };
+    let (sesion, id) = (sesion.trim(), &*app.nucleo.id);
+    let config = cuenta::pedir(sesion, &format!("/v1/bichos/{id}/config")).map(|c| c["config"].clone());
+    json!({
+        "recordatorios": config.as_ref().map(|c| c["recordatorios"].clone()).unwrap_or_default(),
+        "despertador": config.as_ref().map(|c| c["despertador"].clone()).unwrap_or_default(),
+        "agenda": cuenta::pedir(sesion, "/v1/agenda").map(|a| a["proximos"].clone()).unwrap_or_default(),
+        "clima": cuenta::pedir(sesion, &format!("/v1/bichos/{id}/clima")).map(|c| c["clima"].clone()).unwrap_or_default(),
+    })
+}
+
+/// El panel al lado de la cara: el día, la charla y el renglón para hablarle.
+fn abrir_panel(app: &AppHandle) {
+    let v = match app.get_webview_window("panel") {
+        Some(v) => v,
+        None => {
+            let mut b = WebviewWindowBuilder::new(app, "panel", WebviewUrl::App("panel.html".into()))
+                .title("Sintética")
+                .inner_size(360.0, 560.0)
+                .min_inner_size(300.0, 380.0);
+            // Pegado a la derecha de la cara.
+            if let Some(c) = app.get_webview_window("cara") {
+                if let (Ok(p), Ok(t), Ok(f)) = (c.outer_position(), c.outer_size(), c.scale_factor()) {
+                    b = b.position((p.x as f64 + t.width as f64) / f + 8.0, p.y as f64 / f);
+                }
+            }
+            match b.build() {
+                Ok(v) => v,
+                Err(_) => return,
+            }
+        }
+    };
+    let _ = v.show();
+    let _ = v.set_focus();
+    let _ = v.emit("hablar", ());
+}
+
+#[tauri::command]
+fn panel(handle: AppHandle) {
+    abrir_panel(&handle);
+}
+
+/// Cada globo nuevo va al panel (la charla); si era un recordatorio o el
+/// despertador, también como notificación del sistema.
+fn mirar_globos(app: AppHandle) {
+    std::thread::Builder::new()
+        .name("globos".into())
+        .spawn(move || {
+            let globo = app.state::<App>().nucleo.globo.clone();
+            let mut visto = 0;
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                let g = globo.lock().unwrap().clone();
+                if g.numero == visto {
+                    continue;
+                }
+                visto = g.numero;
+                let _ = app.emit("dijo", json!({ "texto": g.texto, "aviso": g.aviso.is_some() }));
+                if let Some(a) = g.aviso {
+                    let titulo = if a == Aviso::Despertador { "Despertador" } else { "Recordatorio" };
+                    let _ = app.notification().builder().title(titulo).body(&g.texto).show();
+                }
+            }
+        })
+        .unwrap();
 }
 
 fn abrir_consola(app: &AppHandle) {
@@ -185,13 +249,14 @@ fn alternar_cara(app: &AppHandle) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts([ATAJO])
                 .expect("el atajo para hablarle")
                 .with_handler(|app, _, e| {
                     if e.state == ShortcutState::Pressed {
-                        hablarle(app);
+                        abrir_panel(app);
                     }
                 })
                 .build(),
@@ -205,6 +270,7 @@ fn main() {
             let nucleo = Nucleo::arrancar(carpeta.join("nucleo"), serie(&carpeta), red.clone(), parlante);
             red.clone().mantener(nucleo.clone());
             app.manage(App { nucleo, red, carpeta, entrada: Mutex::new(None) });
+            mirar_globos(app.handle().clone());
 
             let mostrar = MenuItem::with_id(app, "cara", "Mostrar / esconder", true, None::<&str>)?;
             let hablar = MenuItem::with_id(app, "hablar", "Hablarle", true, Some(ATAJO))?;
@@ -220,7 +286,7 @@ fn main() {
             bandeja
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "cara" => alternar_cara(app),
-                    "hablar" => hablarle(app),
+                    "hablar" => abrir_panel(app),
                     "consola" => abrir_consola(app),
                     "entrar" => entrar(app.clone()),
                     "salir" => app.exit(0),
@@ -238,7 +304,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar])
+        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel])
         .run(tauri::generate_context!())
         .expect("no arrancó Sintética");
 }
