@@ -7,38 +7,71 @@ const $ = (id) => document.getElementById(id);
 
 const LETRAS = 'DLMXJVS'; // la letra de cada día en "dias" ("LMXJV"), desde el domingo
 const hhmm = (d) => d.toTimeString().slice(0, 5);
+const el = (tag, clase, texto) => {
+  const e = document.createElement(tag);
+  if (clase) e.className = clase;
+  if (texto != null) e.append(texto);
+  return e;
+};
+const icono = (id) => {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  u.setAttribute('href', `#i-${id}`);
+  s.append(u);
+  return s;
+};
+// En la Mac los semáforos de la ventana van arriba del panel.
+if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
 
-function renglon(icono, hora, texto) {
-  const li = document.createElement('li');
-  for (const [clase, t] of [['', icono], ['hora', hora], ['', texto]]) {
-    const s = document.createElement('span');
-    s.className = clase;
-    s.textContent = t;
-    li.append(s);
-  }
-  if (hora && hora < hhmm(new Date()) && icono !== '✉️') li.classList.add('pasado');
+// tipo: recordatorio | agenda | alarma | mail (la forma de su marca).
+function renglon(tipo, hora, texto) {
+  const li = el('li');
+  li.append(el('span', `marca ${tipo}`), el('span', 'hora digitos', hora), el('span', 'que', texto));
+  if (hora && hora < hhmm(new Date()) && tipo !== 'mail') li.classList.add('pasado');
   return li;
 }
 
+let todoElDia = false;
 async function cargarDia() {
   const ahora = new Date();
-  $('fecha').textContent = ahora.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric' });
+  const semana = ahora.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+  $('dia-numero').textContent = `${semana} ${ahora.getDate()}`;
+  $('dia-semana').textContent = ahora.toLocaleDateString('es-AR', { month: 'long' });
   const d = await invoke('hoy');
   $('sin-sumar').hidden = Object.keys(d).length > 0;
-  if (d.clima?.temp != null) $('clima').textContent = `${Math.round(d.clima.temp)}° · ${d.clima.descripcion}`;
+  $('clima').hidden = d.clima?.temp == null;
+  if (d.clima?.temp != null) {
+    $('temp').textContent = `${Math.round(d.clima.temp)}°`;
+    $('cielo').textContent = d.clima.descripcion || '';
+  }
 
   const hoyToca = (x) => x && x.activo !== false && (!x.dias || x.dias.includes(LETRAS[ahora.getDay()]));
   const items = [];
   for (const e of d.agenda || []) {
     const ini = new Date(e.inicio);
-    if (ini.toDateString() === ahora.toDateString()) items.push(['📅', e.todoElDia ? '' : hhmm(ini), e.titulo]);
+    if (ini.toDateString() === ahora.toDateString()) items.push(['agenda', e.todoElDia ? '' : hhmm(ini), e.titulo]);
   }
-  for (const r of d.recordatorios || []) if (hoyToca(r)) items.push(['⏰', r.hora, r.texto]);
-  if (hoyToca(d.despertador)) items.push(['☀️', d.despertador.hora, 'Despertador']);
+  for (const r of d.recordatorios || []) if (hoyToca(r)) items.push(['recordatorio', r.hora, r.texto]);
+  if (hoyToca(d.despertador)) items.push(['alarma', d.despertador.hora, 'Despertador']);
   items.sort((a, b) => a[1].localeCompare(b[1]));
   // Los mails sin leer (Gmail, Outlook), al final: los tres últimos.
-  for (const m of (d.correo || []).slice(0, 3)) items.push(['✉️', hhmm(new Date(m.en)), `${m.de}: ${m.asunto}`]);
-  $('dia').replaceChildren(...items.map((i) => renglon(...i)));
+  for (const m of (d.correo || []).slice(0, 3)) items.push(['mail', hhmm(new Date(m.en)), `${m.de}: ${m.asunto}`]);
+  // Lo que viene primero (como mucho 3); lo pasado y el resto, plegado.
+  const filas = items.map((i) => renglon(...i));
+  const proximas = filas.filter((f) => !f.classList.contains('pasado'));
+  const resto = filas.filter((f) => !proximas.slice(0, 3).includes(f));
+  const ver = [...proximas.slice(0, 3)];
+  if (resto.length && !todoElDia) {
+    const mas = el('li');
+    const b = el('button', 'mas grabado', `+${resto.length}`);
+    b.type = 'button';
+    b.title = 'Ver todo el día';
+    b.addEventListener('click', () => { todoElDia = true; cargarDia(); });
+    mas.append(b);
+    ver.push(mas);
+  }
+  $('dia').replaceChildren(...(todoElDia ? filas : ver));
+  $('nada-hoy').hidden = !$('sin-sumar').hidden || filas.length > 0;
 }
 
 // A quién le hablás: esta compu o cualquier robot de la cuenta (la placa del
@@ -54,46 +87,97 @@ async function cargarRobots() {
   // Con un solo robot (esta compu) no hace falta elegir.
   if (robots.filter((r) => !r.este).length === 0) return $('robots').replaceChildren();
   const chips = robots.map((r) => {
-    const b = document.createElement('button');
+    const b = el('button', 'llave');
     b.type = 'button';
     b.setAttribute('aria-pressed', String(r.este ? elegido === null : elegido === r.id));
-    const punto = document.createElement('i');
-    if (r.conectado || r.este) punto.className = 'en-linea';
-    b.append(punto, nombreDe(r));
+    b.append(el('span', `led${r.conectado || r.este ? ' verde' : ''}`), nombreDe(r));
     b.addEventListener('click', () => {
       elegido = r.este ? null : r.id;
       cargarRobots();
-      $('frase').placeholder = r.este ? 'Decile algo…' : `Decile algo a ${nombreDe(r)}…`;
+      $('frase').placeholder = r.este ? 'Decile algo' : `Decile algo a ${nombreDe(r)}`;
       $('frase').focus();
     });
     return b;
   });
   const otro = robots.find((r) => r.id === elegido);
   if (otro?.conectado) {
-    const m = document.createElement('button');
+    const m = el('button', 'llave mimo');
     m.type = 'button';
-    m.className = 'mimo';
     m.title = `Hacerle un mimo a ${nombreDe(otro)}`;
-    m.textContent = '♥';
+    m.setAttribute('aria-label', m.title);
+    m.append(icono('mimo'));
     m.addEventListener('click', () => invoke('mimo', { id: otro.id }));
     chips.push(m);
   }
   $('robots').replaceChildren(...chips);
 }
 
+// Las listas (la del súper, pendientes…): las mismas que en el celu y Telegram.
+let listas = [];
+let abierta = null; // null = el canal de hoy; si no, el id de la lista que se ve
+async function cargarListas() {
+  const r = await invoke('listas');
+  listas = r.listas || [];
+  // Sin ninguna (y con cuenta), la del súper vacía para empezar a anotar.
+  const ver = listas.length || !r.listas ? listas : [{ id: '', nombre: r.porDefecto || 'súper', items: [] }];
+  const tecla = (nombre, id, cuenta) => {
+    const b = el('button', 'tecla negra', nombre);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-pressed', String(abierta === id));
+    b.setAttribute('aria-selected', String(abierta === id));
+    if (cuenta) b.append(el('span', 'cuenta', cuenta));
+    b.addEventListener('click', () => { abierta = id; cargarListas(); });
+    return b;
+  };
+  $('pestanas').replaceChildren(tecla('Hoy', null), ...ver.map((l) => tecla(l.nombre, l.id, l.items.filter((i) => !i.hecho).length)));
+  const l = ver.find((x) => x.id === abierta);
+  if (!l) abierta = null;
+  $('canal-hoy').hidden = !!l;
+  $('bandeja').hidden = !l;
+  if (!l) return;
+  const orden = [...l.items.filter((i) => !i.hecho), ...l.items.filter((i) => i.hecho)];
+  $('items').replaceChildren(...orden.map((i) => {
+    const li = document.createElement('li');
+    const lab = document.createElement('label');
+    if (i.hecho) lab.className = 'hecho';
+    const c = document.createElement('input');
+    c.type = 'checkbox';
+    c.checked = i.hecho;
+    c.addEventListener('change', async () => {
+      await invoke('lista', { accion: 'marcar', lista: l.id, item: i.id, hecho: c.checked });
+      cargarListas();
+    });
+    const t = document.createElement('span');
+    t.textContent = i.texto;
+    lab.append(c, t);
+    li.append(lab);
+    return li;
+  }));
+}
+$('form-item').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const texto = $('nuevo-item').value.trim();
+  if (!texto) return;
+  $('nuevo-item').value = '';
+  let id = abierta;
+  if (!id) {
+    // La primera: se crea la del súper.
+    await invoke('lista', { accion: 'crear', lista: '', texto: 'súper' });
+    id = (await invoke('listas')).listas?.[0]?.id;
+    abierta = id;
+  }
+  if (id) await invoke('lista', { accion: 'agregar', lista: id, texto });
+  cargarListas();
+});
+
 // La charla: se guarda en esta compu (las últimas 60).
 let charla = [];
 try { charla = JSON.parse(localStorage.getItem('charla') || '[]'); } catch { /* vacía */ }
 function mostrar() {
   $('charla').replaceChildren(...charla.map((m) => {
-    const p = document.createElement('p');
-    p.className = m.quien + (m.aviso ? ' aviso' : '');
-    if (m.robot) {
-      const q = document.createElement('span');
-      q.className = 'quien';
-      q.textContent = m.robot;
-      p.append(q);
-    }
+    const p = el('p', m.quien + (m.aviso ? ' aviso' : ''));
+    if (m.robot) p.append(el('span', 'quien grabado', m.robot));
     p.append(m.texto);
     return p;
   }));
@@ -130,11 +214,13 @@ $('form').addEventListener('submit', async (e) => {
   }
   const r = await invoke('charlar', { texto });
   // Lo que cambia algo (una alarma, un recordatorio) se ve en el día.
-  if (r === 'entendio' || r === 'nube') setTimeout(cargarDia, 3000);
+  if (r === 'entendio' || r === 'nube') setTimeout(() => { cargarDia(); cargarListas(); }, 3000);
 });
 
 cargarDia();
 cargarRobots();
+cargarListas();
+setInterval(cargarListas, 60 * 1000);
 setInterval(cargarDia, 5 * 60 * 1000);
 setInterval(cargarRobots, 30 * 1000);
 $('frase').focus();

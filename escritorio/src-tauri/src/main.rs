@@ -142,6 +142,11 @@ fn charlar(app: State<App>, texto: String) -> &'static str {
     if texto.is_empty() {
         return "nada";
     }
+    // Las listas las entiende la nube (el motor de acá las tomaría por un
+    // recordatorio): van directo, y si no era una lista, allá charla igual.
+    if parece_lista(&texto) && app.red.publicar("charla", json!({ "texto": texto }).to_string()) {
+        return "nube";
+    }
     let Some((codigo, frase)) = app.nucleo.charlar(texto.clone()) else { return "error" };
     if codigo == 1 {
         return "entendio";
@@ -153,6 +158,47 @@ fn charlar(app: State<App>, texto: String) -> &'static str {
         app.nucleo.decir(frase);
     }
     "sin-nube"
+}
+
+/// Si suena a las listas ("anotá yerba en la lista del súper", "ya compré el pan").
+fn parece_lista(texto: &str) -> bool {
+    let t: String = texto
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' | 'ü' => 'u',
+            c => c,
+        })
+        .collect();
+    ["lista", "super", "pendientes", "ya compre", "compre "].iter().any(|p| t.contains(p))
+}
+
+/// Las listas de la cuenta (GET /v1/listas).
+#[tauri::command(async)]
+fn listas(app: State<App>) -> serde_json::Value {
+    let Ok(s) = sesion(&app) else { return json!({}) };
+    cuenta::pedir(&s, "/v1/listas").unwrap_or_else(|_| json!({}))
+}
+
+/// Cambiar una lista desde el panel: agregar ("agregar", texto), tachar o
+/// destachar un item ("marcar", item, hecho), sacarlo ("sacar", item) o
+/// crear la de por defecto ("crear", nombre).
+#[tauri::command(async)]
+fn lista(app: State<App>, accion: String, lista: String, item: Option<String>, texto: Option<String>, hecho: Option<bool>) -> Result<(), String> {
+    let s = sesion(&app)?;
+    let item = item.unwrap_or_default();
+    match accion.as_str() {
+        "crear" => cuenta::enviar(&s, "POST", "/v1/listas", json!({ "nombre": texto })),
+        "agregar" => cuenta::enviar(&s, "POST", &format!("/v1/listas/{lista}/items"), json!({ "texto": texto })),
+        "marcar" => cuenta::enviar(&s, "PATCH", &format!("/v1/listas/{lista}/items/{item}"), json!({ "hecho": hecho })),
+        "sacar" => cuenta::enviar(&s, "DELETE", &format!("/v1/listas/{lista}/items/{item}"), json!({})),
+        _ => return Err("acción desconocida".into()),
+    }
+    .map(|_| ())
 }
 
 /// Lo del día para el panel: la config del robot (recordatorios, despertador),
@@ -222,8 +268,14 @@ fn abrir_panel(app: &AppHandle) {
         None => {
             let mut b = WebviewWindowBuilder::new(app, "panel", WebviewUrl::App("panel.html".into()))
                 .title("Sintética")
-                .inner_size(360.0, 560.0)
-                .min_inner_size(300.0, 380.0);
+                .inner_size(360.0, 600.0)
+                .min_inner_size(320.0, 440.0)
+                .background_color(tauri::window::Color(22, 20, 15, 255));
+            // En la Mac, la barra va por arriba del panel (los semáforos sobre la chapa).
+            #[cfg(target_os = "macos")]
+            {
+                b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+            }
             // Pegado a la derecha de la cara.
             if let Some(c) = app.get_webview_window("cara") {
                 if let (Ok(p), Ok(t), Ok(f)) = (c.outer_position(), c.outer_size(), c.scale_factor()) {
@@ -301,6 +353,19 @@ fn alternar_cara(app: &AppHandle) {
         } else {
             let _ = v.show();
             let _ = v.set_focus();
+        }
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    #[test]
+    fn listas_a_la_nube() {
+        for t in ["anotá yerba en la lista del súper", "agregá pan al super", "ya compré el pan", "sumá pilas a pendientes"] {
+            assert!(super::parece_lista(t), "{t}");
+        }
+        for t in ["despertame a las 7", "recordame llamar a mamá", "¿cómo estás?"] {
+            assert!(!super::parece_lista(t), "{t}");
         }
     }
 }
@@ -399,7 +464,7 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel, esconder, robots, charlar_con, mimo])
+        .invoke_handler(tauri::generate_handler![cuadro, tocar, como_esta, entrar, codigo, licencia, comprar, charlar, hoy, panel, esconder, robots, charlar_con, mimo, listas, lista])
         .run(tauri::generate_context!())
         .expect("no arrancó Sintética");
 }
