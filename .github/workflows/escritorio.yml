@@ -1,0 +1,72 @@
+# Compila Sintética para la compu (Mac universal y Windows). Este repo es una
+# copia que publica herramientas/publicar-escritorio.sh desde el repo de
+# Sintética: no se edita acá. Cada push deja los instaladores como artefactos;
+# un tag escritorio-v* los publica en un release (las descargas).
+name: escritorio
+on:
+  push:
+    branches: [main]
+    tags: ['escritorio-v*']
+  workflow_dispatch:
+
+concurrency:
+  group: escritorio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compilar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            nombre: mac
+            args: --target universal-apple-darwin
+            objetivos: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: windows-latest
+            nombre: windows
+            args: ''
+            objetivos: ''
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.objetivos }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: escritorio/src-tauri
+          key: ${{ matrix.nombre }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: clang-cl en el PATH (el núcleo usa __builtin_*)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command clang-cl -ErrorAction SilentlyContinue)) { "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH }
+      - name: Íconos
+        working-directory: escritorio
+        run: npx --yes @tauri-apps/cli@2 icon icono.png -o src-tauri/icons
+      - uses: tauri-apps/tauri-action@v0
+        id: tauri
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: escritorio
+          tauriScript: npx --yes @tauri-apps/cli@2
+          args: ${{ matrix.args }}
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: Sintética ${{ github.ref_name }}
+          releaseBody: El robot que vive en la compu.
+          prerelease: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sintetica-${{ matrix.nombre }}
+          path: |
+            escritorio/src-tauri/target/**/bundle/dmg/*.dmg
+            escritorio/src-tauri/target/**/bundle/nsis/*.exe
+          if-no-files-found: error

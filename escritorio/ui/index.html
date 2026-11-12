@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sintética</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <main class="pantalla" id="pantalla">
+    <canvas id="cara" width="320" height="172"></canvas>
+    <div class="sumar" id="sumar" hidden>
+      <button type="button" id="entrar" title="Sumarlo a tu cuenta con Telegram">Sumar</button>
+      <form id="form-codigo" hidden>
+        <input id="codigo" inputmode="numeric" autocomplete="one-time-code" placeholder="código" maxlength="8">
+      </form>
+      <span id="paso"></span>
+    </div>
+    <i class="punto" id="punto" title="Sin nube"></i>
+  </main>
+  <script src="cara.js"></script>
+</body>
+</html>

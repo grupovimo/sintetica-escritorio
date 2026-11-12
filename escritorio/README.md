@@ -1,0 +1,26 @@
+# escritorio
+
+Sintética en la compu (Mac y Windows): el robot vive en la bandeja y su cara
+flota arriba de todo. Es el bicho-celu (`android-bicho/`) para la compu, con
+Tauri 2.
+
+La cara y el motor de vida **no** están acá: son el núcleo C++ de
+`firmware/nucleo/` (el mismo de la placa), que `build.rs` compila adentro de
+la app. Esta app solo pone el anfitrión:
+
+| Archivo | Qué hace |
+|---|---|
+| `src-tauri/src/nucleo.rs` | La API C (`firmware/api/sintetica_c.h`) en su hilo: el hal (hora, guardado en archivos), el tick y el último cuadro |
+| `src-tauri/src/red.rs` | MQTT a la nube con las credenciales que guarda el núcleo, como `Red.kt` |
+| `src-tauri/src/cuenta.rs` | Entrar con Telegram y `POST /v1/bichos/reclamar` (perfil `escritorio`), como `sumar.py` |
+| `src-tauri/src/main.rs` | La ventana de la cara, la bandeja y la consola (la web) |
+| `ui/` | La cara: dibuja los cuadros; toque, caricia y arrastre |
+
+La nube por defecto es producción; `SINTETICA_API=http://localhost:8080` usa la local.
+
+## Compilar
+
+No se compila en la Mac: `sh herramientas/publicar-escritorio.sh` publica HEAD
+en `grupovimo/sintetica-escritorio` y Actions arma el `.dmg` (universal) y el
+instalador de Windows (sin firma por ahora). Un tag `escritorio-v*` allá los
+publica como release.
