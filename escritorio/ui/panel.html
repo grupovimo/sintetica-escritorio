@@ -32,7 +32,14 @@
     <div class="pestanas" id="pestanas" role="tablist"></div>
     <div class="canal" id="canal-hoy">
       <ul class="visor dia" id="dia"></ul>
-      <p class="visor vacio grabado" id="sin-sumar" hidden>Sumalo a tu cuenta</p>
+      <div class="visor bienvenida" id="sin-sumar" hidden>
+        <span class="grabado">Tu día, tus listas, tus robots</span>
+        <button type="button" class="tecla naranja grande" id="p-entrar">Sumalo con Telegram</button>
+        <form id="p-codigo" class="visor fila" hidden>
+          <input id="p-codigo-texto" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Código">
+        </form>
+        <span class="grabado" id="p-paso"></span>
+      </div>
       <p class="visor vacio grabado" id="nada-hoy" hidden>Nada más por hoy</p>
     </div>
     <div class="bandeja canal" id="bandeja" hidden>

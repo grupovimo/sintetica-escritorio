@@ -131,6 +131,8 @@ async function cargarListas() {
     return b;
   };
   $('pestanas').replaceChildren(tecla('Hoy', null), ...ver.map((l) => tecla(l.nombre, l.id, l.items.filter((i) => !i.hecho).length)));
+  // Sin cuenta todavía no hay listas: el selector con "Hoy" solo no hace falta.
+  $('pestanas').hidden = ver.length === 0;
   const l = ver.find((x) => x.id === abierta);
   if (!l) abierta = null;
   $('canal-hoy').hidden = !!l;
@@ -169,6 +171,27 @@ $('form-item').addEventListener('submit', async (e) => {
   }
   if (id) await invoke('lista', { accion: 'agregar', lista: id, texto });
   cargarListas();
+});
+
+// Sumarlo a la cuenta desde el panel (con Telegram), como el botón de la cara.
+$('p-entrar').addEventListener('click', () => {
+  $('p-entrar').hidden = true;
+  $('p-paso').textContent = 'Abriendo Telegram';
+  invoke('entrar');
+});
+$('p-codigo').addEventListener('submit', (e) => {
+  e.preventDefault();
+  invoke('codigo', { codigo: $('p-codigo-texto').value });
+  $('p-codigo').hidden = true;
+  $('p-paso').textContent = 'Revisando';
+});
+listen('entrada', ({ payload: p }) => {
+  $('p-codigo').hidden = p.paso !== 'codigo';
+  $('p-entrar').hidden = p.paso === 'telegram' || p.paso === 'codigo';
+  $('p-paso').textContent = { telegram: 'Seguí en Telegram', codigo: 'El código del bot', listo: 'Listo', error: 'No salió, probá de nuevo' }[p.paso] ?? '';
+  if (p.paso === 'codigo') $('p-codigo-texto').focus();
+  if (p.paso === 'error') $('p-entrar').hidden = false;
+  if (p.paso === 'listo') setTimeout(() => { cargarDia(); cargarListas(); cargarRobots(); }, 800);
 });
 
 // La charla: se guarda en esta compu (las últimas 60).

@@ -396,6 +396,15 @@ fn main() {
             red.clone().mantener(nucleo.clone());
             app.manage(App { nucleo, red, carpeta, entrada: Mutex::new(None) });
             mirar_globos(app.handle().clone());
+            // La primera vez (sin sumar a una cuenta), el panel se abre solo para sumarlo.
+            if !carpeta_app(app).join("sesion").exists() {
+                let h = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    let h2 = h.clone();
+                    let _ = h.run_on_main_thread(move || abrir_panel(&h2));
+                });
+            }
             app.manage(sentidos::Movida::default());
             let a = app.state::<App>();
             sentidos::arrancar(app.handle().clone(), a.nucleo.clone(), a.carpeta.clone());
@@ -426,6 +435,13 @@ fn main() {
             let sep = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&mostrar, &hablar, &consola, &sumar, &sep, &tamano, &arranque, &PredefinedMenuItem::separator(app)?, &salir])?;
             let mut bandeja = TrayIconBuilder::with_id("sintetica").menu(&menu).tooltip("Sintética");
+            // En la Mac, la carita monocroma de la barra (se pinta sola en claro u oscuro);
+            // en Windows, el ícono de la app.
+            #[cfg(target_os = "macos")]
+            {
+                bandeja = bandeja.icon(tauri::image::Image::from_bytes(include_bytes!("../bandeja.png"))?).icon_as_template(true);
+            }
+            #[cfg(not(target_os = "macos"))]
             if let Some(i) = app.default_window_icon() {
                 bandeja = bandeja.icon(i.clone());
             }
