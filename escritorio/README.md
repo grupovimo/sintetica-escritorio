@@ -17,6 +17,11 @@ la app. Esta app solo pone el anfitrión:
 | `src-tauri/src/main.rs` | La ventana de la cara, la bandeja, la consola (la web), la charla y el atajo para hablarle |
 | `ui/` | La cara: dibuja los cuadros; toque, caricia y arrastre; el renglón para hablarle |
 
+Lo que dice sale en un globo debajo de la cara, dibujado por `ui/` (el
+núcleo no lo dibuja: `sintetica_globo_afuera`). Con un recordatorio o el
+despertador, la cara aparece si estaba escondida, vuelve si estaba asomada y
+da unos saltitos.
+
 El panel (`ui/panel.*`, al lado de la cara): el día (agenda, recordatorios,
 despertador y clima, de la cuenta), la charla y el renglón para hablarle. Cada
 globo del núcleo llega a la charla; si es un recordatorio o el despertador,

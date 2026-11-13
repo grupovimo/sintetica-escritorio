@@ -248,6 +248,9 @@ class Sistema {
   // Sin la pantalla del QR (la compu se vincula sola, desde su menú): la lógica
   // del vínculo sigue igual, solo no se dibuja y se ve la cara.
   void sinPantallaQr(bool si) { sinPantallaQr_ = si; }
+  // El globo lo dibuja el anfitrión (el escritorio, con su letra): la cara
+  // sigue igual y el texto sale por textoGlobo().
+  void globoAfuera(bool si) { globoAfuera_ = si; }
   // Muestra el QR para vincular otro celu un rato (lo mismo que mantener el botón).
   void mostrarQr();
   // Imágenes guardadas: largo 0 = espacio vacío.
@@ -402,6 +405,7 @@ class Sistema {
   uint8_t nClaves_ = 0;
   bool emparejando_ = false;
   bool sinPantallaQr_ = false;
+  bool globoAfuera_ = false;
   uint32_t emparejarHasta_ = 0;  // 0 = hasta que se vincule
   bool autenticado_ = false;
   bool vistaPrevia_ = false;

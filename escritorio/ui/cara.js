@@ -27,6 +27,19 @@ async function dibujar() {
 }
 requestAnimationFrame(dibujar);
 
+// Lo que dice, mientras el núcleo tiene el globo ("" = se fue). El texto
+// queda puesto al irse, para que se desvanezca entero.
+listen('globo', ({ payload: p }) => {
+  const globo = $('globo');
+  if (p.texto) {
+    const t = document.createElement('span');
+    t.textContent = p.texto;
+    globo.replaceChildren(t);
+    globo.classList.toggle('aviso', p.aviso);
+  }
+  globo.classList.toggle('ve', !!p.texto);
+});
+
 // Tocar o mover: si el puntero se corre más de 4 px antes de soltar, es arrastrar.
 let apretado = null;
 $('pantalla').addEventListener('pointerdown', (e) => {

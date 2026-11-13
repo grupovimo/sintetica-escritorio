@@ -1753,7 +1753,7 @@ void Sistema::dibujarPanel() {
     const float cy = H * (redonda ? 0.68f : 0.71f);
     const float anchoMax = redonda ? W * 0.84f : W - 28;
     const float boca = v.origenY + v.unidad * 0.32f;
-    dibujarGlobo(lienzo_, textoGlobo(), cx, cy, anchoMax, redonda ? 3 : 2, redonda, W, H, cx, boca, f);
+    if (!globoAfuera_) dibujarGlobo(lienzo_, textoGlobo(), cx, cy, anchoMax, redonda ? 3 : 2, redonda, W, H, cx, boca, f);
     if (panel_ == Panel::Despertador) {
       // Cuánto suena: unos puntitos que laten, cada vez más.
       const int nivel = alarma_ ? mini(5, 1 + static_cast<int>((hal_.ahoraMs() - alarmaDesde_) / tiemposPanel::ALARMA_SUBE_MS)) : 1;

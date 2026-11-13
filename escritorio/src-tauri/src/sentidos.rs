@@ -31,6 +31,9 @@ const PASO: f64 = 26.0;
 const SALTITO: f64 = 4.0;
 // Al asomarse por un borde, cuánto de la cara queda afuera.
 const AFUERA: f64 = 0.45;
+// Con un aviso: cuántos saltos y de qué alto (px lógicos).
+const SALTOS: u32 = 2;
+const ALTO_SALTO: f64 = 22.0;
 
 /// Lo que comparte con el evento de ventana movida (main.rs).
 pub struct Movida {
@@ -39,11 +42,18 @@ pub struct Movida {
     // Cuándo la arrastraste por última vez (ms desde que arrancó; 0 = no).
     pub arrastre: AtomicU64,
     pub inicio: Instant,
+    // Llegó un recordatorio o el despertador: que se haga ver.
+    pub llamar: AtomicBool,
 }
 
 impl Default for Movida {
     fn default() -> Self {
-        Movida { yo: AtomicBool::new(false), arrastre: AtomicU64::new(0), inicio: Instant::now() }
+        Movida {
+            yo: AtomicBool::new(false),
+            arrastre: AtomicU64::new(0),
+            inicio: Instant::now(),
+            llamar: AtomicBool::new(false),
+        }
     }
 }
 
@@ -136,6 +146,43 @@ fn asomarse(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo, pi: &Piso) {
     caminar_a(v, m, nucleo, adentro, VELOCIDAD * 0.6);
 }
 
+/// Unos saltitos en el lugar (una parábola cada uno), para que lo veas.
+fn saltar(v: &WebviewWindow, m: &Movida) {
+    let (Ok(p), Ok(f)) = (v.outer_position(), v.scale_factor()) else { return };
+    let (x, y) = (p.x as f64, p.y as f64);
+    for i in 0..SALTOS {
+        // El segundo, más bajito.
+        let alto = ALTO_SALTO * f / (i + 1) as f64;
+        let dura = 0.32 / (i as f64 * 0.25 + 1.0);
+        let t0 = Instant::now();
+        loop {
+            let t = (t0.elapsed().as_secs_f64() / dura).min(1.0);
+            mover(v, m, x, y - alto * 4.0 * t * (1.0 - t));
+            if t >= 1.0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(16));
+        }
+    }
+}
+
+/// Un aviso: si estaba escondida aparece, si estaba asomada vuelve a entrar,
+/// y salta mirándote.
+fn hacerse_ver(v: &WebviewWindow, m: &Movida, nucleo: &Nucleo) {
+    if !v.is_visible().unwrap_or(true) {
+        let _ = v.show();
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    if let (Some(pi), Ok(p)) = (piso(v), v.outer_position()) {
+        let x = p.x as f64;
+        if x < pi.x0 || x > pi.x1 {
+            caminar_a(v, m, nucleo, x.clamp(pi.x0, pi.x1), VELOCIDAD * 1.5);
+        }
+    }
+    nucleo.seguir(0.0, 0.3);
+    saltar(v, m);
+}
+
 /// El tamaño (ancho lógico; el alto sigue la proporción del cuadro). Si
 /// estaba en el piso, sigue en el piso.
 pub fn tamano(v: &WebviewWindow, m: &Movida, ancho: f64, archivo: &PathBuf) {
@@ -198,6 +245,10 @@ pub fn arrancar(app: AppHandle, nucleo: Nucleo, carpeta: PathBuf) {
             let mut proximo_paseo = Instant::now() + Duration::from_secs(rand::random::<u64>() % 60 + 60);
             loop {
                 std::thread::sleep(Duration::from_millis(50));
+                if m.llamar.swap(false, Ordering::Relaxed) {
+                    hacerse_ver(&v, &m, &nucleo);
+                    guardar_lugar(&lugar, &v);
+                }
                 if !v.is_visible().unwrap_or(false) {
                     continue;
                 }

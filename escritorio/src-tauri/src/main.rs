@@ -313,15 +313,22 @@ fn mirar_globos(app: AppHandle) {
         .spawn(move || {
             let globo = app.state::<App>().nucleo.globo.clone();
             let mut visto = 0;
+            let mut en_cara = String::new();
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(250));
+                std::thread::sleep(std::time::Duration::from_millis(100));
                 let g = globo.lock().unwrap().clone();
-                if g.numero == visto {
+                // La cara muestra el globo mientras el núcleo lo tiene ("" = se fue).
+                if g.texto != en_cara {
+                    en_cara = g.texto.clone();
+                    let _ = app.emit_to("cara", "globo", json!({ "texto": g.texto, "aviso": g.aviso.is_some() }));
+                }
+                if g.numero == visto || g.texto.is_empty() {
                     continue;
                 }
                 visto = g.numero;
                 let _ = app.emit("dijo", json!({ "texto": g.texto, "aviso": g.aviso.is_some() }));
                 if let Some(a) = g.aviso {
+                    app.state::<sentidos::Movida>().llamar.store(true, std::sync::atomic::Ordering::Relaxed);
                     let titulo = if a == Aviso::Despertador { "Despertador" } else { "Recordatorio" };
                     let _ = app.notification().builder().title(titulo).body(&g.texto).show();
                 }
