@@ -196,6 +196,13 @@ listen('entrada', ({ payload: p }) => {
 
 // La charla: se guarda en esta compu (las últimas 60).
 let charla = [];
+// Mientras la nube piensa la respuesta: tres LED que laten (se van con lo que dice, o a los 20 s).
+let pensando = null;
+function pensar(si) {
+  clearTimeout(pensando);
+  pensando = si ? setTimeout(() => pensar(false), 20000) : null;
+  mostrar();
+}
 try { charla = JSON.parse(localStorage.getItem('charla') || '[]'); } catch { /* vacía */ }
 function mostrar() {
   $('charla').replaceChildren(...charla.map((m) => {
@@ -204,6 +211,12 @@ function mostrar() {
     p.append(m.texto);
     return p;
   }));
+  if (pensando) {
+    const p = el('p', 'el pensando');
+    p.setAttribute('aria-label', 'Pensando');
+    p.append(el('i'), el('i'), el('i'));
+    $('charla').append(p);
+  }
   $('charla').scrollTop = $('charla').scrollHeight;
 }
 function sumar(m) {
@@ -214,7 +227,11 @@ function sumar(m) {
 mostrar();
 
 listen('dijo', ({ payload: p }) => {
-  if (p.texto) sumar({ quien: 'el', texto: p.texto, aviso: p.aviso });
+  if (p.texto) {
+    clearTimeout(pensando);
+    pensando = null;
+    sumar({ quien: 'el', texto: p.texto, aviso: p.aviso });
+  }
   if (p.aviso) cargarDia();
 });
 listen('hablar', () => $('frase').focus());
@@ -227,15 +244,19 @@ $('form').addEventListener('submit', async (e) => {
   const otro = robots.find((r) => r.id === elegido);
   sumar({ quien: 'vos', texto, robot: otro ? `a ${nombreDe(otro)}` : undefined });
   if (otro) {
+    pensar(true);
     try {
       const dijo = await invoke('charlar_con', { id: otro.id, texto });
+      pensar(false);
       if (dijo) sumar({ quien: 'el', texto: dijo, robot: nombreDe(otro) });
     } catch (err) {
+      pensar(false);
       sumar({ quien: 'el', texto: String(err), robot: nombreDe(otro) });
     }
     return;
   }
   const r = await invoke('charlar', { texto });
+  if (r === 'nube') pensar(true);
   // Lo que cambia algo (una alarma, un recordatorio) se ve en el día.
   if (r === 'entendio' || r === 'nube') setTimeout(() => { cargarDia(); cargarListas(); }, 3000);
 });

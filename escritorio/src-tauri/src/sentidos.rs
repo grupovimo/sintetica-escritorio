@@ -267,8 +267,18 @@ pub fn arrancar(app: AppHandle, nucleo: Nucleo, carpeta: PathBuf) {
                 let Ok(c) = app.cursor_position() else { continue };
                 let (x, y, w, h) = (p.x as f64, p.y as f64, t.width as f64, t.height as f64);
 
-                // Te mira: hacia el mouse, relativo al centro de la cara y al tamaño de la pantalla.
-                if (c.x - cursor.x).abs() + (c.y - cursor.y).abs() > 2.0 {
+                // Te mira: hacia el mouse, relativo al centro de la cara y al tamaño de la
+                // pantalla. Mientras le escribís en el panel, mira el panel.
+                let panel = app.get_webview_window("panel").filter(|pa| pa.is_focused().unwrap_or(false));
+                let mira = match panel.as_ref().and_then(|pa| Some((pa.outer_position().ok()?, pa.outer_size().ok()?))) {
+                    Some((pp, pt)) => PhysicalPosition::new(
+                        pp.x as f64 + pt.width as f64 / 2.0,
+                        pp.y as f64 + pt.height as f64 * 0.85,
+                    ),
+                    None => c,
+                };
+                if (mira.x - cursor.x).abs() + (mira.y - cursor.y).abs() > 2.0 {
+                    let c = mira;
                     cursor = c;
                     if let Ok(Some(mo)) = v.current_monitor() {
                         let (mw, mh) = (mo.size().width as f64, mo.size().height as f64);
@@ -289,7 +299,10 @@ pub fn arrancar(app: AppHandle, nucleo: Nucleo, carpeta: PathBuf) {
                     })
                 };
                 let sobre_cara = caja.is_some_and(|(a, b, cc, d)| c.x >= a && c.y >= b && c.x < cc && c.y < d);
-                encima = adentro && (encima || sobre_cara);
+                // Con un globo, también su franja (abajo de la boca): tocarlo abre el panel.
+                let con_globo = !nucleo.globo.lock().unwrap().texto.is_empty();
+                let sobre_globo = con_globo && c.y >= y + h * 0.55 && c.x >= x + w * 0.08 && c.x < x + w * 0.92;
+                encima = adentro && (encima || sobre_cara || sobre_globo);
                 if traspasa != Some(!encima) {
                     traspasa = Some(!encima);
                     let _ = v.set_ignore_cursor_events(!encima);

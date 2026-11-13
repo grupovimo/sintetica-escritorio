@@ -40,10 +40,13 @@ listen('globo', ({ payload: p }) => {
   globo.classList.toggle('ve', !!p.texto);
 });
 
+// Tocar el globo: el panel, para contestarle.
+$('globo').addEventListener('click', () => invoke('panel'));
+
 // Tocar o mover: si el puntero se corre más de 4 px antes de soltar, es arrastrar.
 let apretado = null;
 $('pantalla').addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || e.target.closest('.sumar, .botones')) return;
+  if (e.button !== 0 || e.target.closest('.sumar, .botones, .globo')) return;
   apretado = { x: e.screenX, y: e.screenY, tocando: true };
   invoke('tocar', { apretado: true });
 });
@@ -107,7 +110,7 @@ listen('entrada', ({ payload: p }) => {
 
 // Doble clic: el panel (el día y la charla).
 $('pantalla').addEventListener('dblclick', (e) => {
-  if (!e.target.closest('.sumar, .botones')) invoke('panel');
+  if (!e.target.closest('.sumar, .botones, .globo')) invoke('panel');
 });
 $('b-hablar').addEventListener('click', () => invoke('panel'));
 $('b-esconder').addEventListener('click', () => invoke('esconder'));

@@ -1,6 +1,6 @@
 [package]
 name = "sintetica-escritorio"
-version = "0.1.2"
+version = "0.1.3"
 description = "Sintética: el robot que vive en la compu"
 edition = "2021"
 publish = false

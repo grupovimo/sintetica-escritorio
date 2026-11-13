@@ -310,6 +310,22 @@ h1 {
   border-bottom-right-radius: 4px;
 }
 .charla .quien { display: block; margin-bottom: 4px; }
+/* Pensando: tres LED naranjas que laten uno atrás del otro. */
+.charla .pensando { display: flex; gap: 6px; padding-block: 13px; }
+.charla .pensando i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brasa);
+  box-shadow: 0 0 6px rgba(255, 106, 51, 0.7);
+  animation: latir 1.1s ease-in-out infinite;
+}
+.charla .pensando i:nth-child(2) { animation-delay: 0.18s; }
+.charla .pensando i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes latir {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
 .charla .vos .quien { color: rgba(26, 23, 20, 0.6); }
 
 .renglon { display: flex; gap: 10px; align-items: center; }
@@ -317,4 +333,5 @@ h1 {
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+  .charla .pensando i { animation: none; opacity: 0.7; }
 }
