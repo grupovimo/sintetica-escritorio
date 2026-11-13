@@ -1060,6 +1060,11 @@ void charlar(const char* texto, size_t n, const ContextoCharla& ctx, EstadoCharl
           extra |= 1u << i;
       }
     const bool libre = (it.necesita & (N_TEXTO | N_QUIEN)) != 0;
+    if (it.noCon[0]) {
+      bool fuera = false;
+      for (int i = 0; i < f.n && !fuera; i++) fuera = enLista(it.noCon, f, i);
+      if (fuera) continue;
+    }
     Coincidencia c;
     for (int j = 0; j < it.nPatrones; j++) probarPatron(PATRONES_CHARLA[it.patron + j], f, extra, libre, &c);
     if (c.puntaje > mc.puntaje && (!libre || textoSirve(it, f, c.ultima))) mc = c, mejor = k;

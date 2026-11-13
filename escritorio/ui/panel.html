@@ -11,6 +11,7 @@
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-mandar" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-mimo" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.3 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10Z" fill="currentColor"/></symbol>
+    <symbol id="i-sacar" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
     <symbol id="i-mas" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
   </svg>
 
@@ -44,6 +45,7 @@
     </div>
     <div class="bandeja canal" id="bandeja" hidden>
       <ul id="items"></ul>
+      <button type="button" class="limpiar grabado" id="limpiar" hidden>Sacar los tachados</button>
       <form id="form-item" class="visor fila">
         <input id="nuevo-item" maxlength="120" autocomplete="off" placeholder="Agregar">
         <button type="submit" class="tecla negra cuadrada chica" aria-label="Agregar"><svg><use href="#i-mas"/></svg></button>

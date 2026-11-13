@@ -153,9 +153,24 @@ async function cargarListas() {
     const t = document.createElement('span');
     t.textContent = i.texto;
     lab.append(c, t);
-    li.append(lab);
+    const x = el('button', 'sacar');
+    x.type = 'button';
+    x.title = `Sacar «${i.texto}»`;
+    x.setAttribute('aria-label', x.title);
+    x.append(icono('sacar'));
+    x.addEventListener('click', async () => {
+      li.classList.add('saliendo');
+      await invoke('lista', { accion: 'sacar', lista: l.id, item: i.id });
+      cargarListas();
+    });
+    li.append(lab, x);
     return li;
   }));
+  $('limpiar').hidden = !l.items.some((i) => i.hecho);
+  $('limpiar').onclick = async () => {
+    await invoke('lista', { accion: 'limpiar', lista: l.id });
+    cargarListas();
+  };
 }
 $('form-item').addEventListener('submit', async (e) => {
   e.preventDefault();

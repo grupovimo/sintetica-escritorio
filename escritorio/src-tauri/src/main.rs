@@ -185,8 +185,8 @@ fn listas(app: State<App>) -> serde_json::Value {
 }
 
 /// Cambiar una lista desde el panel: agregar ("agregar", texto), tachar o
-/// destachar un item ("marcar", item, hecho), sacarlo ("sacar", item) o
-/// crear la de por defecto ("crear", nombre).
+/// destachar un item ("marcar", item, hecho), sacarlo ("sacar", item), sacar
+/// los tachados ("limpiar") o crear la de por defecto ("crear", nombre).
 #[tauri::command(async)]
 fn lista(app: State<App>, accion: String, lista: String, item: Option<String>, texto: Option<String>, hecho: Option<bool>) -> Result<(), String> {
     let s = sesion(&app)?;
@@ -196,6 +196,7 @@ fn lista(app: State<App>, accion: String, lista: String, item: Option<String>, t
         "agregar" => cuenta::enviar(&s, "POST", &format!("/v1/listas/{lista}/items"), json!({ "texto": texto })),
         "marcar" => cuenta::enviar(&s, "PATCH", &format!("/v1/listas/{lista}/items/{item}"), json!({ "hecho": hecho })),
         "sacar" => cuenta::enviar(&s, "DELETE", &format!("/v1/listas/{lista}/items/{item}"), json!({})),
+        "limpiar" => cuenta::enviar(&s, "POST", &format!("/v1/listas/{lista}/limpiar"), json!({})),
         _ => return Err("acción desconocida".into()),
     }
     .map(|_| ())
